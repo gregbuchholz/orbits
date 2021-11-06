@@ -9,6 +9,10 @@ use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Point;
 use sdl2::render::RenderTarget;
 
+/*
+#[cfg(target_os = "emscripten")]
+pub mod emscripten;
+*/
 //use sdl2::rect::Rect;
 
 //fn screen_to_complex<I,F>(x:I, y:I, w:I, h:I) -> Complex<f64> {
@@ -25,17 +29,26 @@ fn complex_to_screen(c:Complex<f64>, w:i32, h:i32) -> Point {
 
 fn main() -> Result<(), String> {
 
+    #[cfg(target_os = "emscripten")]
+    {
+        let h1 = sdl2::hint::get("SDL_EMSCRIPTEN_ASYNCIFY");
+        let h2 = sdl2::hint::set("SDL_EMSCRIPTEN_ASYNCIFY","1");
+        let h3 = sdl2::hint::get("SDL_EMSCRIPTEN_ASYNCIFY");
+        println!("h1:{:?}, h2: {:?}, h3:{:?}",h1,h2,h3);
+    }
+
+    //println!("Hello, Benoit B. Mandelbrot!");
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?; 
     let window = video_subsystem
-        .window("Mandelbrot Set Orbit Browser", 800, 600)
+        .window("Mandelbrot Set Orbit Browser", 320,240)
         .position_centered()
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().software().build().map_err(|e| e.to_string())?;
     let creator = canvas.texture_creator();
     let mut bg_texture = creator
-        .create_texture_target(PixelFormatEnum::RGBA8888, 800, 600)
+        .create_texture_target(PixelFormatEnum::RGBA8888, 320, 240)
         .map_err(|e| e.to_string())?;
 
     canvas.with_texture_canvas(&mut bg_texture, |texture_canvas| {
@@ -46,8 +59,9 @@ fn main() -> Result<(), String> {
             texture_canvas.set_draw_color(Color::RGBA(255,255,255,255));
             texture_canvas.clear();
 
-            for x in 0 .. w {
-                for y in 0 .. h {
+            for y in 0 .. h {
+                //println!("y: {}",y);
+                for x in 0 .. w {
                     let c = screen_to_complex(x,y,w,h);
                     let mut z = Complex::<f64>{re: 0.0, im: 0.0};
 
@@ -71,29 +85,49 @@ fn main() -> Result<(), String> {
 
     //let origin = Point::new(0,0);
 
+    let mut pump = sdl_context.event_pump().unwrap();
+
+    //println!("before main loop");
     'mainloop: loop {
-        let event = sdl_context.event_pump()?.wait_event();
+    //let mut main_loop = move || {
+
+        //let event = sdl_context.event_pump()?.wait_event();
+        let event = pump.wait_event();
         
-        canvas.copy(&bg_texture, None, None)?;
+        canvas.copy(&bg_texture, None, None).unwrap();
        
         match event {
             Event::KeyDown {keycode: Some(Keycode::Escape),..} | Event::Quit { .. } 
-                => break 'mainloop,
+                => { //std::process::exit(0); 
+                     break 'mainloop },
             Event::MouseMotion {x, y, .. } => {
                 let (w1,h1) = canvas.viewport().size();
                 //canvas.set_draw_color(Color::RGBA(255,0,0,255));
                 //canvas.draw_line(origin, Point::new(x,y))?;
                 //println!("x: {}, y: {}", x, y); 
-                draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap())?;
+                draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap()).unwrap();
                 {}}
             _ => {}
         }
 
         canvas.present();
-    }
+    };
     //println!("Hello, Benoit B. Mandelbrot!");
 
-    Ok(())
+/*
+    #[cfg(target_os = "emscripten")]
+    use emscripten::{emscripten};
+
+    #[cfg(target_os = "emscripten")]
+    emscripten::set_main_loop_callback(main_loop);
+
+    loop { 
+        #[cfg(not(target_os = "emscripten"))]
+        main_loop(); 
+    };
+*/
+    println!("Exiting...");
+    Ok(())  //dead code -- will never get here
 }
 
 fn draw_orbits<T:RenderTarget>(canvas:&mut sdl2::render::Canvas<T>, 
