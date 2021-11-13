@@ -41,14 +41,14 @@ fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?; 
     let window = video_subsystem
-        .window("Mandelbrot Set Orbit Browser", 320,240)
+        .window("Mandelbrot Set Orbit Browser", 800,600)
         .position_centered()
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().software().build().map_err(|e| e.to_string())?;
     let creator = canvas.texture_creator();
     let mut bg_texture = creator
-        .create_texture_target(PixelFormatEnum::RGBA8888, 320, 240)
+        .create_texture_target(PixelFormatEnum::RGBA8888, 800, 600)
         .map_err(|e| e.to_string())?;
 
     canvas.with_texture_canvas(&mut bg_texture, |texture_canvas| {
