@@ -4,6 +4,7 @@ extern crate sdl2;
 use std::convert::TryInto;
 use num::Complex;
 use sdl2::event::Event;
+use sdl2::event::WindowEvent;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Point;
@@ -43,6 +44,7 @@ fn main() -> Result<(), String> {
     let window = video_subsystem
         .window("Mandelbrot Set Orbit Browser", 800,600)
         .position_centered()
+        .resizable()
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().software().build().map_err(|e| e.to_string())?;
@@ -97,16 +99,37 @@ fn main() -> Result<(), String> {
         canvas.copy(&bg_texture, None, None).unwrap();
        
         match event {
-            Event::KeyDown {keycode: Some(Keycode::Escape),..} | Event::Quit { .. } 
-                => { //std::process::exit(0); 
-                     break 'mainloop },
-            Event::MouseMotion {x, y, .. } => {
-                let (w1,h1) = canvas.viewport().size();
-                //canvas.set_draw_color(Color::RGBA(255,0,0,255));
-                //canvas.draw_line(origin, Point::new(x,y))?;
-                //println!("x: {}, y: {}", x, y); 
-                draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap()).unwrap();
-                {}}
+            Event::KeyDown {keycode: Some(Keycode::Escape),..} | 
+            Event::Quit { .. } => { 
+                    break 'mainloop 
+                },
+            Event::MouseMotion {x, y, .. } | 
+            Event::MouseButtonUp {x,y, .. } |
+            Event::MouseButtonDown {x,y, .. } => {
+                    let (w1,h1) = canvas.viewport().size();
+                    draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap()).unwrap();
+                    {}},
+            Event::FingerDown {x, y, .. } |
+            Event::FingerMotion {x, y, .. } |
+            Event::FingerUp {x, y, .. }  => {
+                    let (w1,h1) = canvas.viewport().size();
+                    let x = (x*w1 as f32).floor() as i32;
+                    let y = (y*h1 as f32).floor() as i32;
+                    draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap()).unwrap();
+                    {}},
+            Event::MultiGesture {x, y, d_dist, num_fingers, .. }  => {
+                    if num_fingers == 2 {
+                        println!("Touch Zoom {} @ ({},{})",if d_dist>0.0 {"in"} else {"out"},x,y);
+                    }
+                },
+            Event::MouseWheel {y, .. } => {
+                    let mouse_state = pump.mouse_state();
+                    let pos = (mouse_state.x(),mouse_state.y());     
+                    println!("Zoom {} @ {:?}",if y>0 {"in"} else {"out"},pos);
+                },
+            Event::Window {win_event: WindowEvent::SizeChanged(x,y), .. } => { 
+                    println!("Got Size change -- x:{}, y:{}",x,y);
+                },
             _ => {}
         }
 
@@ -114,20 +137,8 @@ fn main() -> Result<(), String> {
     };
     //println!("Hello, Benoit B. Mandelbrot!");
 
-/*
-    #[cfg(target_os = "emscripten")]
-    use emscripten::{emscripten};
-
-    #[cfg(target_os = "emscripten")]
-    emscripten::set_main_loop_callback(main_loop);
-
-    loop { 
-        #[cfg(not(target_os = "emscripten"))]
-        main_loop(); 
-    };
-*/
     println!("Exiting...");
-    Ok(())  //dead code -- will never get here
+    Ok(()) 
 }
 
 fn draw_orbits<T:RenderTarget>(canvas:&mut sdl2::render::Canvas<T>, 
