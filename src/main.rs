@@ -93,46 +93,48 @@ fn main() -> Result<(), String> {
     'mainloop: loop {
     //let mut main_loop = move || {
 
-        //let event = sdl_context.event_pump()?.wait_event();
-        let event = pump.wait_event();
+        //let event = pump.wait_event();
+        let mut potential_event = Some(pump.wait_event()); //Blocking call will always succeed
         
         canvas.copy(&bg_texture, None, None).unwrap();
-       
-        match event {
-            Event::KeyDown {keycode: Some(Keycode::Escape),..} | 
-            Event::Quit { .. } => { 
-                    break 'mainloop 
-                },
-            Event::MouseMotion {x, y, .. } | 
-            Event::MouseButtonUp {x,y, .. } |
-            Event::MouseButtonDown {x,y, .. } => {
-                    let (w1,h1) = canvas.viewport().size();
-                    draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap()).unwrap();
-                    {}},
-            Event::FingerDown {x, y, .. } |
-            Event::FingerMotion {x, y, .. } |
-            Event::FingerUp {x, y, .. }  => {
-                    let (w1,h1) = canvas.viewport().size();
-                    let x = (x*w1 as f32).floor() as i32;
-                    let y = (y*h1 as f32).floor() as i32;
-                    draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap()).unwrap();
-                    {}},
-            Event::MultiGesture {x, y, d_dist, num_fingers, .. }  => {
-                    if num_fingers == 2 {
-                        println!("Touch Zoom {} @ ({},{})",if d_dist>0.0 {"in"} else {"out"},x,y);
-                    }
-                },
-            Event::MouseWheel {y, .. } => {
-                    let mouse_state = pump.mouse_state();
-                    let pos = (mouse_state.x(),mouse_state.y());     
-                    println!("Zoom {} @ {:?}",if y>0 {"in"} else {"out"},pos);
-                },
-            Event::Window {win_event: WindowEvent::SizeChanged(x,y), .. } => { 
-                    println!("Got Size change -- x:{}, y:{}",x,y);
-                },
-            _ => {}
-        }
 
+        while let Some(event) = potential_event {
+            match event {
+                Event::KeyDown {keycode: Some(Keycode::Escape),..} | 
+                Event::Quit { .. } => { 
+                        break 'mainloop 
+                    },
+                Event::MouseMotion {x, y, .. } | 
+                Event::MouseButtonUp {x,y, .. } |
+                Event::MouseButtonDown {x,y, .. } => {
+                        let (w1,h1) = canvas.viewport().size();
+                        draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap()).unwrap();
+                        {}},
+                Event::FingerDown {x, y, .. } |
+                Event::FingerMotion {x, y, .. } |
+                Event::FingerUp {x, y, .. }  => {
+                        let (w1,h1) = canvas.viewport().size();
+                        let x = (x*w1 as f32).floor() as i32;
+                        let y = (y*h1 as f32).floor() as i32;
+                        draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap()).unwrap();
+                        {}},
+                Event::MultiGesture {x, y, d_dist, num_fingers, .. }  => {
+                        if num_fingers == 2 {
+                            println!("Touch Zoom {} @ ({},{})",if d_dist>0.0 {"in"} else {"out"},x,y);
+                        }
+                    },
+                Event::MouseWheel {y, .. } => {
+                        let mouse_state = pump.mouse_state();
+                        let pos = (mouse_state.x(),mouse_state.y());     
+                        println!("Zoom {} @ {:?}",if y>0 {"in"} else {"out"},pos);
+                    },
+                Event::Window {win_event: WindowEvent::SizeChanged(x,y), .. } => { 
+                        println!("Got Size change -- x:{}, y:{}",x,y);
+                    },
+                _ => {}
+            } //match event
+            potential_event = pump.poll_event();
+        } //while
         canvas.present();
     };
     //println!("Hello, Benoit B. Mandelbrot!");
