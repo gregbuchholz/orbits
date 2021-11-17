@@ -8,15 +8,10 @@ use sdl2::event::WindowEvent;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Point;
+use sdl2::render::TextureCreator;
 use sdl2::render::RenderTarget;
+use sdl2::video::WindowContext;
 
-/*
-#[cfg(target_os = "emscripten")]
-pub mod emscripten;
-*/
-//use sdl2::rect::Rect;
-
-//fn screen_to_complex<I,F>(x:I, y:I, w:I, h:I) -> Complex<f64> {
 fn screen_to_complex(x:i32, y:i32, w:i32, h:i32) -> Complex<f64> {
     Complex {re: 2.0*x as f64 / w as f64 - 1.5,
              im: 2.0*y as f64 / h as f64 - 1.0}
@@ -49,51 +44,12 @@ fn main() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().software().build().map_err(|e| e.to_string())?;
     let creator = canvas.texture_creator();
-    let mut bg_texture = creator
-        .create_texture_target(PixelFormatEnum::RGBA8888, 800, 600)
-        .map_err(|e| e.to_string())?;
-
-    canvas.with_texture_canvas(&mut bg_texture, |texture_canvas| {
-            let (w1,h1) = texture_canvas.viewport().size();
-            let w:i32 = w1.try_into().unwrap();
-            let h:i32 = h1.try_into().unwrap();
-
-            texture_canvas.set_draw_color(Color::RGBA(255,255,255,255));
-            texture_canvas.clear();
-
-            for y in 0 .. h {
-                //println!("y: {}",y);
-                for x in 0 .. w {
-                    let c = screen_to_complex(x,y,w,h);
-                    let mut z = Complex::<f64>{re: 0.0, im: 0.0};
-
-                    for _i in 0 .. 50 {
-                        z = z*z + c;
-                        if z.norm_sqr() > 4.0 { break; }
-                    }
-
-                    if z.norm_sqr() > 4.0 {
-                        texture_canvas.set_draw_color(Color::RGBA(255,255,255,255));
-                    }
-                    else {
-                        texture_canvas.set_draw_color(Color::RGBA(0,0,0,255));
-                    }
-                    //Maybe do something better to get the complier to shut up
-                    //maybe panic if draw_point fails
-                    let _foo = texture_canvas.draw_point(Point::new(x,y));
-                }
-            }
-            }).map_err(|e| e.to_string())?;
-
-    //let origin = Point::new(0,0);
+    let mut bg_texture = update_bg(&mut canvas, &creator);
 
     let mut pump = sdl_context.event_pump().unwrap();
 
-    //println!("before main loop");
     'mainloop: loop {
-    //let mut main_loop = move || {
 
-        //let event = pump.wait_event();
         let mut potential_event = Some(pump.wait_event()); //Blocking call will always succeed
         
         canvas.copy(&bg_texture, None, None).unwrap();
@@ -130,6 +86,7 @@ fn main() -> Result<(), String> {
                     },
                 Event::Window {win_event: WindowEvent::SizeChanged(x,y), .. } => { 
                         println!("Got Size change -- x:{}, y:{}",x,y);
+                        println!("viewport size: {:?}",canvas.viewport().size());
                     },
                 _ => {}
             } //match event
@@ -137,7 +94,6 @@ fn main() -> Result<(), String> {
         } //while
         canvas.present();
     };
-    //println!("Hello, Benoit B. Mandelbrot!");
 
     println!("Exiting...");
     Ok(()) 
@@ -147,7 +103,6 @@ fn draw_orbits<T:RenderTarget>(canvas:&mut sdl2::render::Canvas<T>,
                 x: i32, y: i32, w: i32, h:i32) -> Result<(), String> {
     let iter = 50;
     let limit_sqr = 2.0 * 2.0;
-    //let origin = Complex{re: 0.0, im: 0.0};
     let c = screen_to_complex(x,y,w,h);
     let mut z = Complex{re: 0.0, im: 0.0};
    
@@ -169,4 +124,44 @@ fn draw_orbits<T:RenderTarget>(canvas:&mut sdl2::render::Canvas<T>,
     }
 
     Ok(())
+}
+
+fn update_bg<'a>(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    texture_creator: &'a TextureCreator<WindowContext>) -> sdl2::render::Texture<'a> {
+    let mut bg_texture = texture_creator
+        .create_texture_target(PixelFormatEnum::RGBA8888, 800, 600)
+        .map_err(|e| e.to_string()).unwrap();
+
+    canvas.with_texture_canvas(&mut bg_texture, |texture_canvas| {
+            let (w1,h1) = texture_canvas.viewport().size();
+            let w:i32 = w1.try_into().unwrap();
+            let h:i32 = h1.try_into().unwrap();
+
+            texture_canvas.set_draw_color(Color::RGBA(255,255,255,255));
+            texture_canvas.clear();
+
+            for y in 0 .. h {
+                //println!("y: {}",y);
+                for x in 0 .. w {
+                    let c = screen_to_complex(x,y,w,h);
+                    let mut z = Complex::<f64>{re: 0.0, im: 0.0};
+
+                    for _i in 0 .. 50 {
+                        z = z*z + c;
+                        if z.norm_sqr() > 4.0 { break; }
+                    }
+
+                    if z.norm_sqr() > 4.0 {
+                        texture_canvas.set_draw_color(Color::RGBA(255,255,255,255));
+                    }
+                    else {
+                        texture_canvas.set_draw_color(Color::RGBA(0,0,0,255));
+                    }
+                    //Maybe do something better to get the complier to shut up
+                    //maybe panic if draw_point fails
+                    let _foo = texture_canvas.draw_point(Point::new(x,y));
+                }
+            }
+            }).map_err(|e| e.to_string()).unwrap();
+    bg_texture
 }
