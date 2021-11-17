@@ -11,6 +11,10 @@ use sdl2::rect::Point;
 use sdl2::render::TextureCreator;
 use sdl2::render::RenderTarget;
 use sdl2::video::WindowContext;
+use sdl2::mouse::Cursor;
+use sdl2::surface::Surface;
+
+const CURSOR_SIZE_BYTES:usize = 11*11*4;
 
 fn screen_to_complex(x:i32, y:i32, w:i32, h:i32) -> Complex<f64> {
     Complex {re: 2.0*x as f64 / w as f64 - 1.5,
@@ -46,6 +50,25 @@ fn main() -> Result<(), String> {
     let creator = canvas.texture_creator();
     let mut bg_texture = update_bg(&mut canvas, &creator);
 
+    //Seems like the "surface" cursor is slowing things down in the browser.  Investigate further
+    //Is it "software" rendering instead of a hardware accelerated "texture"?
+/*
+    let mut cursor_raw = cursor_pixels();
+    let cursor_surface = Surface::from_data(&mut cursor_raw, 11, 11, 4*11, PixelFormatEnum::RGBA8888).unwrap();
+    let potential_cursor = Cursor::from_surface(&cursor_surface,5,5);
+    let cursor = match potential_cursor {
+        Ok(cursor) => cursor,
+        _ => panic!("cursor failed!")
+    };
+    cursor.set();
+*/
+    //Maybe try a SystemCursor::Crosshair, or SystemCursor::No
+/*
+    //From C-SDL
+    SDL_Cursor* cursor;
+    cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_HAND);
+    SDL_SetCursor(cursor);
+*/
     let mut pump = sdl_context.event_pump().unwrap();
 
     'mainloop: loop {
@@ -165,3 +188,24 @@ fn update_bg<'a>(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
             }).map_err(|e| e.to_string()).unwrap();
     bg_texture
 }
+
+/*
+fn cursor_pixels() -> [u8; CURSOR_SIZE_BYTES] {
+
+    //Change mouse cursor to 11x11 pixel crosshairs
+    let mut cursor_raw:[u8; CURSOR_SIZE_BYTES] = [0; CURSOR_SIZE_BYTES];
+    for i in 0..11 {
+        //vertical
+        cursor_raw[i*11*4+20] = 255; //Alpha
+        cursor_raw[i*11*4+21] = 255; //Blue
+        cursor_raw[i*11*4+22] = 128; //Green
+        cursor_raw[i*11*4+23] = 0; //Red
+        //horizontal
+        cursor_raw[5*11*4+i*4+0] = 255;
+        cursor_raw[5*11*4+i*4+1] = 255;
+        cursor_raw[5*11*4+i*4+2] = 128;
+        cursor_raw[5*11*4+i*4+3] = 0;
+    }
+    cursor_raw
+}
+*/
