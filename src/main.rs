@@ -11,10 +11,10 @@ use sdl2::rect::Point;
 use sdl2::render::TextureCreator;
 use sdl2::render::RenderTarget;
 use sdl2::video::WindowContext;
-use sdl2::mouse::Cursor;
-use sdl2::surface::Surface;
+//use sdl2::mouse::Cursor;
+//use sdl2::surface::Surface;
 
-const CURSOR_SIZE_BYTES:usize = 11*11*4;
+//const CURSOR_SIZE_BYTES:usize = 11*11*4;
 
 fn screen_to_complex(x:i32, y:i32, w:i32, h:i32) -> Complex<f64> {
     Complex {re: 2.0*x as f64 / w as f64 - 1.5,
@@ -47,8 +47,17 @@ fn main() -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().software().build().map_err(|e| e.to_string())?;
+    //desktop_display_mode
+    //current_display_mode
+    let num_displays = video_subsystem.num_video_displays()?;
+    println!("num_displays:{}",num_displays);
+    for i in 0..num_displays {
+        let dm = video_subsystem.current_display_mode(i)?;
+        println!("dm:{} x:{}, y:{}",i,dm.w,dm.h);
+    }
     let creator = canvas.texture_creator();
-    let mut bg_texture = update_bg(&mut canvas, &creator);
+    let (initial_x,initial_y) = (800,600);
+    let mut bg_texture = update_bg(&mut canvas, &creator, initial_x, initial_y);
 
     //Seems like the "surface" cursor is slowing things down in the browser.  Investigate further
     //Is it "software" rendering instead of a hardware accelerated "texture"?
@@ -83,6 +92,10 @@ fn main() -> Result<(), String> {
                 Event::Quit { .. } => { 
                         break 'mainloop 
                     },
+                Event::KeyDown {keycode: Some(Keycode::F),..} => { 
+                    //"F" -> full screen mode
+                    canvas.window_mut().set_fullscreen(sdl2::video::FullscreenType::Desktop)?;
+                    },
                 Event::MouseMotion {x, y, .. } | 
                 Event::MouseButtonUp {x,y, .. } |
                 Event::MouseButtonDown {x,y, .. } => {
@@ -109,7 +122,10 @@ fn main() -> Result<(), String> {
                     },
                 Event::Window {win_event: WindowEvent::SizeChanged(x,y), .. } => { 
                         println!("Got Size change -- x:{}, y:{}",x,y);
-                        println!("viewport size: {:?}",canvas.viewport().size());
+                        let new_size = canvas.viewport().size();
+                        let nx = new_size.0;
+                        let ny = new_size.1;
+                        bg_texture = update_bg(&mut canvas, &creator, nx, ny);
                     },
                 _ => {}
             } //match event
@@ -150,9 +166,9 @@ fn draw_orbits<T:RenderTarget>(canvas:&mut sdl2::render::Canvas<T>,
 }
 
 fn update_bg<'a>(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    texture_creator: &'a TextureCreator<WindowContext>) -> sdl2::render::Texture<'a> {
+    texture_creator: &'a TextureCreator<WindowContext>, win_x:u32, win_y:u32) -> sdl2::render::Texture<'a> {
     let mut bg_texture = texture_creator
-        .create_texture_target(PixelFormatEnum::RGBA8888, 800, 600)
+        .create_texture_target(PixelFormatEnum::RGBA8888, win_x, win_y)
         .map_err(|e| e.to_string()).unwrap();
 
     canvas.with_texture_canvas(&mut bg_texture, |texture_canvas| {
