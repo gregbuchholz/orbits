@@ -19,15 +19,30 @@ use sdl2::render::TextureQuery;
 
 //const CURSOR_SIZE_BYTES:usize = 11*11*4;
 
-fn screen_to_complex(x:i32, y:i32, w:i32, h:i32) -> Complex<f64> {
-    Complex {re: 2.0*x as f64 / w as f64 - 1.5,
-             im: 2.0*y as f64 / h as f64 - 1.0}
+struct ComplexBBox {
+    ll: Complex<f64>,
+    ur: Complex<f64>
 }
 
-fn complex_to_screen(c:Complex<f64>, w:i32, h:i32) -> Point {
-    let Complex{re, im} = c;
-    Point::new(((re+1.5)*(w as f64)/2.0) as i32,
-               ((im+1.0)*(h as f64)/2.0) as i32)
+impl ComplexBBox {
+    fn screen_to_complex(&self, x:i32, y:i32, w:i32, h:i32) -> Complex<f64> {
+        let (x,y,w,h) = (x as f64, y as f64, w as f64, h as f64);
+        let (lower, left) = (self.ll.im, self.ll.re);
+        let (upper, right) = (self.ur.im, self.ur.re);
+
+        Complex { re: (left + (x/w)*(right-left)),
+                  im: (upper+(y/h)*(lower-upper)) }
+    }
+
+    fn complex_to_screen(&self, c:Complex<f64>, w:i32, h:i32) -> Point {
+        let Complex{re, im} = c;
+        let (w,h) = (w as f64, h as f64);
+        let (lower, left) = (self.ll.im, self.ll.re);
+        let (upper, right) = (self.ur.im, self.ur.re);
+        let x = ((re-left)*w/(right-left)) as i32;
+        let y = ((im-upper)*h/(lower-upper)) as i32;
+        Point::new(x,y)
+    }
 }
 
 fn main() -> Result<(), String> {
@@ -61,10 +76,13 @@ fn main() -> Result<(), String> {
     }
     let creator = canvas.texture_creator();
     let (initial_x,initial_y) = (800,600);
-    let mut bg_texture = update_bg(&mut canvas, &creator, initial_x, initial_y);
+    
+    let j = Complex {re: 0.0, im: 1.0};
+    let mut view = ComplexBBox { ll: -1.5-j, ur: 0.5+j };
+    let mut bg_texture = update_bg(&mut canvas, &creator, initial_x, initial_y, &view);
     
     let font_path = Path::new("assets/DejaVuSansMono.ttf");
-    let mut font = ttf_context.load_font(font_path, 12)?;
+    let font = ttf_context.load_font(font_path, 12)?;
 
     //Seems like the "surface" cursor is slowing things down in the browser.  Investigate further
     //Is it "software" rendering instead of a hardware accelerated "texture"?
@@ -112,8 +130,8 @@ fn main() -> Result<(), String> {
                 Event::MouseButtonUp {x,y, .. } |
                 Event::MouseButtonDown {x,y, .. } => {
                         let (w1,h1) = canvas.viewport().size();
-                        position = screen_to_complex(x, y, w1.try_into().unwrap(), h1.try_into().unwrap());
-                        draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap()).unwrap();
+                        position = view.screen_to_complex(x, y, w1.try_into().unwrap(), h1.try_into().unwrap());
+                        draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view).unwrap();
                         {}},
                 Event::FingerDown {x, y, .. } |
                 Event::FingerMotion {x, y, .. } |
@@ -121,7 +139,7 @@ fn main() -> Result<(), String> {
                         let (w1,h1) = canvas.viewport().size();
                         let x = (x*w1 as f32).floor() as i32;
                         let y = (y*h1 as f32).floor() as i32;
-                        draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap()).unwrap();
+                        draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view).unwrap();
                         {}},
                 Event::MultiGesture {x, y, d_dist, num_fingers, .. }  => {
                         if num_fingers == 2 {
@@ -138,7 +156,7 @@ fn main() -> Result<(), String> {
                         let new_size = canvas.viewport().size();
                         let nx = new_size.0;
                         let ny = new_size.1;
-                        bg_texture = update_bg(&mut canvas, &creator, nx, ny);
+                        bg_texture = update_bg(&mut canvas, &creator, nx, ny, &view);
                     },
                 _ => {}
             } //match event
@@ -166,10 +184,10 @@ fn main() -> Result<(), String> {
 }
 
 fn draw_orbits<T:RenderTarget>(canvas:&mut sdl2::render::Canvas<T>, 
-                x: i32, y: i32, w: i32, h:i32) -> Result<(), String> {
+                x: i32, y: i32, w: i32, h:i32, view:& ComplexBBox) -> Result<(), String> {
     let iter = 50;
     let limit_sqr = 2.0 * 2.0;
-    let c = screen_to_complex(x,y,w,h);
+    let c = view.screen_to_complex(x,y,w,h);
     let mut z = Complex{re: 0.0, im: 0.0};
    
     for i in 0 .. iter {
@@ -177,8 +195,8 @@ fn draw_orbits<T:RenderTarget>(canvas:&mut sdl2::render::Canvas<T>,
         if z_next.norm_sqr() > limit_sqr {
             break;
         }
-        let p1 = complex_to_screen(z,w,h);
-        let p2 = complex_to_screen(z_next,w,h);
+        let p1 = view.complex_to_screen(z,w,h);
+        let p2 = view.complex_to_screen(z_next,w,h);
 
         if i == 0 {
             canvas.set_draw_color(Color::RGBA(255,0,0,255));
@@ -193,7 +211,7 @@ fn draw_orbits<T:RenderTarget>(canvas:&mut sdl2::render::Canvas<T>,
 }
 
 fn update_bg<'a>(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    texture_creator: &'a TextureCreator<WindowContext>, win_x:u32, win_y:u32) -> sdl2::render::Texture<'a> {
+    texture_creator: &'a TextureCreator<WindowContext>, win_x:u32, win_y:u32, view:&ComplexBBox) -> sdl2::render::Texture<'a> {
     let mut bg_texture = texture_creator
         .create_texture_target(PixelFormatEnum::RGBA8888, win_x, win_y)
         .map_err(|e| e.to_string()).unwrap();
@@ -209,7 +227,7 @@ fn update_bg<'a>(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
             for y in 0 .. h {
                 //println!("y: {}",y);
                 for x in 0 .. w {
-                    let c = screen_to_complex(x,y,w,h);
+                    let c = view.screen_to_complex(x,y,w,h);
                     let mut z = Complex::<f64>{re: 0.0, im: 0.0};
 
                     for _i in 0 .. 50 {
