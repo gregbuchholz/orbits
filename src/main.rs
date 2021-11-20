@@ -19,6 +19,7 @@ use sdl2::render::TextureQuery;
 
 //const CURSOR_SIZE_BYTES:usize = 11*11*4;
 
+#[derive(Copy, Clone)]
 struct ComplexBBox {
     ll: Complex<f64>,
     ur: Complex<f64>
@@ -42,6 +43,17 @@ impl ComplexBBox {
         let x = ((re-left)*w/(right-left)) as i32;
         let y = ((im-upper)*h/(lower-upper)) as i32;
         Point::new(x,y)
+    }
+
+    fn zoom(&self, position:Complex<f64>, scale_factor:f64) -> ComplexBBox {
+        let Complex {re:x, im:y} = position;
+        let new_lower = y - (y-self.ll.im)*scale_factor;
+        let new_upper = new_lower + (self.ur.im - self.ll.im)*scale_factor;
+        let new_left = x - (x-self.ll.re)*scale_factor;
+        let new_right = new_left + (self.ur.re - self.ll.re)*scale_factor;
+        
+        ComplexBBox {ll:Complex{re: new_left, im: new_lower},
+                     ur:Complex{re: new_right, im: new_upper}} 
     }
 }
 
@@ -78,7 +90,8 @@ fn main() -> Result<(), String> {
     let (initial_x,initial_y) = (800,600);
     
     let j = Complex {re: 0.0, im: 1.0};
-    let mut view = ComplexBBox { ll: -1.5-j, ur: 0.5+j };
+    let initial_view = ComplexBBox { ll: -1.5-j, ur: 0.5+j }; 
+    let mut view = initial_view; 
     let mut bg_texture = update_bg(&mut canvas, &creator, initial_x, initial_y, &view);
     
     let font_path = Path::new("assets/DejaVuSansMono.ttf");
@@ -126,6 +139,13 @@ fn main() -> Result<(), String> {
                     //"F" -> full screen mode
                     canvas.window_mut().set_fullscreen(sdl2::video::FullscreenType::Desktop)?;
                     },
+                Event::KeyDown {keycode: Some(Keycode::Home),..} => { 
+                    view = initial_view;
+                    let size = canvas.viewport().size();
+                    let w1 = size.0;
+                    let h1 = size.1;
+                    bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view);
+                    },
                 Event::MouseMotion {x, y, .. } | 
                 Event::MouseButtonUp {x,y, .. } |
                 Event::MouseButtonDown {x,y, .. } => {
@@ -148,8 +168,14 @@ fn main() -> Result<(), String> {
                     },
                 Event::MouseWheel {y, .. } => {
                         let mouse_state = pump.mouse_state();
-                        let pos = (mouse_state.x(),mouse_state.y());     
-                        println!("Zoom {} @ {:?}",if y>0 {"in"} else {"out"},pos);
+                        let (mx,my) = (mouse_state.x(),mouse_state.y());     
+                        let (w1,h1) = canvas.viewport().size();
+                        let complex_pos = view.screen_to_complex(mx, my, w1.try_into().unwrap(), 
+                                                                         h1.try_into().unwrap());
+                        //println!("Zoom {} @ {:?}",if y>0 {"in"} else {"out"},(mx,my));
+                        let zoomies = if y>0 {0.5} else {2.0};
+                        view = view.zoom(complex_pos,zoomies);
+                        bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view);
                     },
                 Event::Window {win_event: WindowEvent::SizeChanged(x,y), .. } => { 
                         println!("Got Size change -- x:{}, y:{}",x,y);
