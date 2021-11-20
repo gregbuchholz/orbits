@@ -8,9 +8,12 @@ use sdl2::event::WindowEvent;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Point;
+use sdl2::rect::Rect;
 use sdl2::render::TextureCreator;
 use sdl2::render::RenderTarget;
 use sdl2::video::WindowContext;
+use std::path::Path;
+use sdl2::render::TextureQuery;
 //use sdl2::mouse::Cursor;
 //use sdl2::surface::Surface;
 
@@ -47,6 +50,7 @@ fn main() -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().software().build().map_err(|e| e.to_string())?;
+    let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
     //desktop_display_mode
     //current_display_mode
     let num_displays = video_subsystem.num_video_displays()?;
@@ -58,6 +62,9 @@ fn main() -> Result<(), String> {
     let creator = canvas.texture_creator();
     let (initial_x,initial_y) = (800,600);
     let mut bg_texture = update_bg(&mut canvas, &creator, initial_x, initial_y);
+    
+    let font_path = Path::new("assets/DejaVuSansMono.ttf");
+    let mut font = ttf_context.load_font(font_path, 12)?;
 
     //Seems like the "surface" cursor is slowing things down in the browser.  Investigate further
     //Is it "software" rendering instead of a hardware accelerated "texture"?
@@ -78,7 +85,9 @@ fn main() -> Result<(), String> {
     cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_HAND);
     SDL_SetCursor(cursor);
 */
+    let mut show_coords_q = true;
     let mut pump = sdl_context.event_pump().unwrap();
+    let mut position = Complex { re:0.0, im:0.0 };
 
     'mainloop: loop {
 
@@ -92,6 +101,9 @@ fn main() -> Result<(), String> {
                 Event::Quit { .. } => { 
                         break 'mainloop 
                     },
+                Event::KeyDown {keycode: Some(Keycode::C),..} => { 
+                    show_coords_q = !show_coords_q;
+                    },
                 Event::KeyDown {keycode: Some(Keycode::F),..} => { 
                     //"F" -> full screen mode
                     canvas.window_mut().set_fullscreen(sdl2::video::FullscreenType::Desktop)?;
@@ -100,6 +112,7 @@ fn main() -> Result<(), String> {
                 Event::MouseButtonUp {x,y, .. } |
                 Event::MouseButtonDown {x,y, .. } => {
                         let (w1,h1) = canvas.viewport().size();
+                        position = screen_to_complex(x, y, w1.try_into().unwrap(), h1.try_into().unwrap());
                         draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap()).unwrap();
                         {}},
                 Event::FingerDown {x, y, .. } |
@@ -131,6 +144,20 @@ fn main() -> Result<(), String> {
             } //match event
             potential_event = pump.poll_event();
         } //while
+
+        if show_coords_q {
+            let tmp = format!("{:.8} {:+.8}i",position.re,position.im);
+            let coord_disp_surf = font.render(tmp.as_str()).
+                    shaded(Color::RGBA(125, 0, 125, 255),Color::RGBA(200,200,200,255)).
+                    map_err(|e| e.to_string())?;
+            let coord_disp_texture = creator.create_texture_from_surface(&coord_disp_surf).
+                    map_err(|e| e.to_string())?;
+            let TextureQuery {width, height, .. } = coord_disp_texture.query();
+            let text_rect = Rect::new(5, (canvas.viewport().size().1-height-5).
+                                                try_into().unwrap(), 
+                                width, height);
+            canvas.copy(&coord_disp_texture, None, text_rect)?;
+        }
         canvas.present();
     };
 
