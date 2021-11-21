@@ -6,6 +6,7 @@ use num::Complex;
 use sdl2::event::Event;
 use sdl2::event::WindowEvent;
 use sdl2::keyboard::Keycode;
+use sdl2::mouse::MouseButton;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Point;
 use sdl2::rect::Rect;
@@ -43,6 +44,18 @@ impl ComplexBBox {
         let x = ((re-left)*w/(right-left)) as i32;
         let y = ((im-upper)*h/(lower-upper)) as i32;
         Point::new(x,y)
+    }
+
+    fn complex_deltas(&self, w:i32, h:i32, dx:i32, dy:i32) -> Complex<f64> {
+        let (w,h) = (w as f64, h as f64);
+        let (dx,dy) = (dx as f64, dy as f64);
+        let left = self.ll.re;
+        let right = self.ur.re;
+        let lower = self.ll.im;
+        let upper = self.ur.im;
+
+        Complex { re: ((dx/w)*(right-left)),
+                  im: ((-dy/h)*(upper-lower)) }
     }
 
     fn zoom(&self, position:Complex<f64>, scale_factor:f64) -> ComplexBBox {
@@ -87,13 +100,17 @@ fn main() -> Result<(), String> {
         println!("dm:{} x:{}, y:{}",i,dm.w,dm.h);
     }
     let creator = canvas.texture_creator();
-    let (initial_x,initial_y) = (800,600);
+    let (initial_width,initial_height) = (800,600);
     
     let j = Complex {re: 0.0, im: 1.0};
     let initial_view = ComplexBBox { ll: -1.5-j, ur: 0.5+j }; 
     let mut view = initial_view; 
     let mut iterations = 50;
-    let mut bg_texture = update_bg(&mut canvas, &creator, initial_x, initial_y, &view, iterations);
+    
+    let mut bg_rect = Rect::new(0,0, initial_width, initial_height);
+    let mut bg_texture = update_bg(&mut canvas, &creator, initial_width, initial_height, &view, iterations);
+    let mut drag_x:i32 = 0_i32;
+    let mut drag_y:i32 = 0;
     
     let font_path = Path::new("assets/DejaVuSansMono.ttf");
     let font = ttf_context.load_font(font_path, 12)?;
@@ -125,7 +142,9 @@ fn main() -> Result<(), String> {
 
         let mut potential_event = Some(pump.wait_event()); //Blocking call will always succeed
         
-        canvas.copy(&bg_texture, None, None).unwrap();
+        canvas.set_draw_color(Color::RGBA(255,255,255,255));
+        canvas.clear(); 
+        canvas.copy(&bg_texture, None, bg_rect).unwrap();
 
         while let Some(event) = potential_event {
             match event {
@@ -141,6 +160,7 @@ fn main() -> Result<(), String> {
                     let size = canvas.viewport().size();
                     let w1 = size.0;
                     let h1 = size.1;
+                    //fix this to not need an event to refresh screen
                     bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view,iterations);
                     },
                 Event::KeyDown {keycode: Some(Keycode::F),..} => { 
@@ -149,18 +169,48 @@ fn main() -> Result<(), String> {
                     },
                 Event::KeyDown {keycode: Some(Keycode::Home),..} => { 
                     view = initial_view;
+                    bg_rect = Rect::new(0, 0, initial_width, initial_height);
                     let size = canvas.viewport().size();
                     let w1 = size.0;
                     let h1 = size.1;
+                    //fix this to not need an event to refresh screen
                     bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view,iterations);
                     },
-                Event::MouseMotion {x, y, .. } | 
-                Event::MouseButtonUp {x,y, .. } |
-                Event::MouseButtonDown {x,y, .. } => {
+                Event::MouseButtonUp { .. } => {
+                    //recalculate new view bounding box
+                    let size = canvas.viewport().size();
+                    let w1 = size.0;
+                    let h1 = size.1;
+                    let shift = view.complex_deltas(w1.try_into().unwrap(), h1.try_into().unwrap(), 
+                                                    drag_x, drag_y);
+                    view = ComplexBBox {ll: view.ll-shift, ur: view.ur-shift};
+                    //reset bg_rect
+                    bg_rect = Rect::new(0, 0, w1, h1);
+                    //recalculate bg image 
+                    bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view, iterations);
+                    //recopy bg image to screen so that we don't have to wait for an event to refresh screen
+                    canvas.copy(&bg_texture, None, bg_rect).unwrap();
+                    let _state = pump.relative_mouse_state(); //reset relative coordinates
+                    drag_x = 0;
+                    drag_y = 0;
+                    },
+                Event::MouseButtonDown{ .. } => {
+                    let _state = pump.relative_mouse_state(); //reset relative coordinates
+                    drag_x = 0;
+                    drag_y = 0;
+                    },
+                Event::MouseMotion {x, y, .. } => {
+                    if pump.mouse_state().is_mouse_button_pressed(MouseButton::Left) {
+                        let state = pump.relative_mouse_state();
+                        drag_x += state.x();
+                        drag_y += state.y();
+                        bg_rect.set_x(bg_rect.x() + state.x());
+                        bg_rect.set_y(bg_rect.y() + state.y());
+                    } else {
                         let (w1,h1) = canvas.viewport().size();
                         position = view.screen_to_complex(x, y, w1.try_into().unwrap(), h1.try_into().unwrap());
                         draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view).unwrap();
-                        {}},
+                        {}}},
                 Event::FingerDown {x, y, .. } |
                 Event::FingerMotion {x, y, .. } |
                 Event::FingerUp {x, y, .. }  => {
@@ -183,6 +233,7 @@ fn main() -> Result<(), String> {
                         //println!("Zoom {} @ {:?}",if y>0 {"in"} else {"out"},(mx,my));
                         let zoomies = if y>0 {0.5} else {2.0};
                         view = view.zoom(complex_pos,zoomies);
+                        //fix this to not need an event to refresh screen
                         bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view, iterations);
                     },
                 Event::Window {win_event: WindowEvent::SizeChanged(x,y), .. } => { 
@@ -190,6 +241,8 @@ fn main() -> Result<(), String> {
                         let new_size = canvas.viewport().size();
                         let nx = new_size.0;
                         let ny = new_size.1;
+                        bg_rect = Rect::new(0, 0, nx, ny);
+                        //fix this to not need an event to refresh screen
                         bg_texture = update_bg(&mut canvas, &creator, nx, ny, &view, iterations);
                     },
                 _ => {}
