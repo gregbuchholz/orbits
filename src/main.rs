@@ -92,7 +92,8 @@ fn main() -> Result<(), String> {
     let j = Complex {re: 0.0, im: 1.0};
     let initial_view = ComplexBBox { ll: -1.5-j, ur: 0.5+j }; 
     let mut view = initial_view; 
-    let mut bg_texture = update_bg(&mut canvas, &creator, initial_x, initial_y, &view);
+    let mut iterations = 50;
+    let mut bg_texture = update_bg(&mut canvas, &creator, initial_x, initial_y, &view, iterations);
     
     let font_path = Path::new("assets/DejaVuSansMono.ttf");
     let font = ttf_context.load_font(font_path, 12)?;
@@ -135,6 +136,13 @@ fn main() -> Result<(), String> {
                 Event::KeyDown {keycode: Some(Keycode::C),..} => { 
                     show_coords_q = !show_coords_q;
                     },
+                Event::KeyDown {keycode: Some(Keycode::I),..} => { 
+                    iterations *= 2;
+                    let size = canvas.viewport().size();
+                    let w1 = size.0;
+                    let h1 = size.1;
+                    bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view,iterations);
+                    },
                 Event::KeyDown {keycode: Some(Keycode::F),..} => { 
                     //"F" -> full screen mode
                     canvas.window_mut().set_fullscreen(sdl2::video::FullscreenType::Desktop)?;
@@ -144,7 +152,7 @@ fn main() -> Result<(), String> {
                     let size = canvas.viewport().size();
                     let w1 = size.0;
                     let h1 = size.1;
-                    bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view);
+                    bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view,iterations);
                     },
                 Event::MouseMotion {x, y, .. } | 
                 Event::MouseButtonUp {x,y, .. } |
@@ -163,7 +171,7 @@ fn main() -> Result<(), String> {
                         {}},
                 Event::MultiGesture {x, y, d_dist, num_fingers, .. }  => {
                         if num_fingers == 2 {
-                            println!("Touch Zoom {} @ ({},{})",if d_dist>0.0 {"in"} else {"out"},x,y);
+                            println!("Touch Zoom {}: {:.4} @ ({},{})",if d_dist>0.0 {"in "} else {"out"},d_dist,x,y);
                         }
                     },
                 Event::MouseWheel {y, .. } => {
@@ -175,14 +183,14 @@ fn main() -> Result<(), String> {
                         //println!("Zoom {} @ {:?}",if y>0 {"in"} else {"out"},(mx,my));
                         let zoomies = if y>0 {0.5} else {2.0};
                         view = view.zoom(complex_pos,zoomies);
-                        bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view);
+                        bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view, iterations);
                     },
                 Event::Window {win_event: WindowEvent::SizeChanged(x,y), .. } => { 
                         println!("Got Size change -- x:{}, y:{}",x,y);
                         let new_size = canvas.viewport().size();
                         let nx = new_size.0;
                         let ny = new_size.1;
-                        bg_texture = update_bg(&mut canvas, &creator, nx, ny, &view);
+                        bg_texture = update_bg(&mut canvas, &creator, nx, ny, &view, iterations);
                     },
                 _ => {}
             } //match event
@@ -237,7 +245,7 @@ fn draw_orbits<T:RenderTarget>(canvas:&mut sdl2::render::Canvas<T>,
 }
 
 fn update_bg<'a>(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    texture_creator: &'a TextureCreator<WindowContext>, win_x:u32, win_y:u32, view:&ComplexBBox) -> sdl2::render::Texture<'a> {
+    texture_creator: &'a TextureCreator<WindowContext>, win_x:u32, win_y:u32, view:&ComplexBBox, iter:u32 ) -> sdl2::render::Texture<'a> {
     let mut bg_texture = texture_creator
         .create_texture_target(PixelFormatEnum::RGBA8888, win_x, win_y)
         .map_err(|e| e.to_string()).unwrap();
@@ -256,7 +264,7 @@ fn update_bg<'a>(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
                     let c = view.screen_to_complex(x,y,w,h);
                     let mut z = Complex::<f64>{re: 0.0, im: 0.0};
 
-                    for _i in 0 .. 50 {
+                    for _i in 0 .. iter {
                         z = z*z + c;
                         if z.norm_sqr() > 4.0 { break; }
                     }
