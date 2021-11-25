@@ -309,12 +309,13 @@ fn main() -> Result<(), String> {
                         let new_size = canvas.viewport().size();
                         let nx = new_size.0;
                         let ny = new_size.1;
+                        bg_rect_src = Rect::new(0, 0, nx, ny);
                         bg_rect_dest = Rect::new(0, 0, nx, ny);
                         //fix this to not need an event to refresh screen
                         bg_texture = update_bg(&mut canvas, &creator, nx, ny, &view, iterations);
                     },
                 _ => { 
-                        //println!("unhandeled event: {:?}",event);
+                        println!("unhandeled event: {:?}",event);
                      }
             } //match event
             potential_event = pump.poll_event();
