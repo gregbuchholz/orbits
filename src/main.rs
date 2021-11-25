@@ -18,6 +18,8 @@ use sdl2::render::TextureQuery;
 //use sdl2::mouse::Cursor;
 //use sdl2::surface::Surface;
 
+const SDL_TOUCH_MOUSEID:u32 = 0xFFFF_FFFF;
+const INITIAL_ITERATIONS:u32 = 50;
 //const CURSOR_SIZE_BYTES:usize = 11*11*4;
 
 #[derive(Copy, Clone)]
@@ -74,10 +76,10 @@ fn main() -> Result<(), String> {
 
     #[cfg(target_os = "emscripten")]
     {
-        let h1 = sdl2::hint::get("SDL_EMSCRIPTEN_ASYNCIFY");
-        let h2 = sdl2::hint::set("SDL_EMSCRIPTEN_ASYNCIFY","1");
-        let h3 = sdl2::hint::get("SDL_EMSCRIPTEN_ASYNCIFY");
-        println!("h1:{:?}, h2: {:?}, h3:{:?}",h1,h2,h3);
+        //let h1 = sdl2::hint::get("SDL_EMSCRIPTEN_ASYNCIFY");
+        let _h2 = sdl2::hint::set("SDL_EMSCRIPTEN_ASYNCIFY","1");
+        //let h3 = sdl2::hint::get("SDL_EMSCRIPTEN_ASYNCIFY");
+        //println!("h1:{:?}, h2: {:?}, h3:{:?}",h1,h2,h3);
     }
 
     //println!("Hello, Benoit B. Mandelbrot!");
@@ -93,21 +95,25 @@ fn main() -> Result<(), String> {
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
     //desktop_display_mode
     //current_display_mode
+    /*
     let num_displays = video_subsystem.num_video_displays()?;
     println!("num_displays:{}",num_displays);
     for i in 0..num_displays {
         let dm = video_subsystem.current_display_mode(i)?;
         println!("dm:{} x:{}, y:{}",i,dm.w,dm.h);
-    }
+    }*/
     let creator = canvas.texture_creator();
     let (initial_width,initial_height) = (800,600);
     
     let j = Complex {re: 0.0, im: 1.0};
     let initial_view = ComplexBBox { ll: -1.5-j, ur: 0.5+j }; 
     let mut view = initial_view; 
-    let mut iterations = 50;
+    let mut iterations = INITIAL_ITERATIONS;
     
-    let mut bg_rect = Rect::new(0,0, initial_width, initial_height);
+    let initial_bg_rect = Rect::new(0,0, initial_width, initial_height);
+    let mut bg_rect_dest = initial_bg_rect.clone();
+    let mut bg_rect_src = initial_bg_rect.clone(); 
+
     let mut bg_texture = update_bg(&mut canvas, &creator, initial_width, initial_height, &view, iterations);
     let mut drag_x:i32 = 0_i32;
     let mut drag_y:i32 = 0;
@@ -135,6 +141,9 @@ fn main() -> Result<(), String> {
     SDL_SetCursor(cursor);
 */
     let mut show_coords_q = true;
+    let mut touch_zoom_in_progress = false;
+    let mut touch_zoom_pos = Point::new(0,0);
+
     let mut pump = sdl_context.event_pump().unwrap();
     let mut position = Complex { re:0.0, im:0.0 };
 
@@ -144,7 +153,7 @@ fn main() -> Result<(), String> {
         
         canvas.set_draw_color(Color::RGBA(255,255,255,255));
         canvas.clear(); 
-        canvas.copy(&bg_texture, None, bg_rect).unwrap();
+        canvas.copy(&bg_texture, bg_rect_src, bg_rect_dest).unwrap();
 
         while let Some(event) = potential_event {
             match event {
@@ -169,14 +178,17 @@ fn main() -> Result<(), String> {
                     },
                 Event::KeyDown {keycode: Some(Keycode::Home),..} => { 
                     view = initial_view;
-                    bg_rect = Rect::new(0, 0, initial_width, initial_height);
+                    let iterations = INITIAL_ITERATIONS;
                     let size = canvas.viewport().size();
                     let w1 = size.0;
                     let h1 = size.1;
-                    //fix this to not need an event to refresh screen
+                    bg_rect_src = Rect::new(0,0,w1,h1); 
+                    bg_rect_dest = Rect::new(0,0,w1,h1);
                     bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view,iterations);
+                    //fix copy below so that each branch doesn't need to do this
+                    canvas.copy(&bg_texture, None, bg_rect_dest).unwrap();
                     },
-                Event::MouseButtonUp { .. } => {
+                Event::MouseButtonUp {which, .. } if which != SDL_TOUCH_MOUSEID => {
                     //recalculate new view bounding box
                     let size = canvas.viewport().size();
                     let w1 = size.0;
@@ -185,45 +197,101 @@ fn main() -> Result<(), String> {
                                                     drag_x, drag_y);
                     view = ComplexBBox {ll: view.ll-shift, ur: view.ur-shift};
                     //reset bg_rect
-                    bg_rect = Rect::new(0, 0, w1, h1);
+                    bg_rect_dest = Rect::new(0, 0, w1, h1);
                     //recalculate bg image 
                     bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view, iterations);
                     //recopy bg image to screen so that we don't have to wait for an event to refresh screen
-                    canvas.copy(&bg_texture, None, bg_rect).unwrap();
+                    canvas.copy(&bg_texture, None, bg_rect_dest).unwrap();
                     let _state = pump.relative_mouse_state(); //reset relative coordinates
                     drag_x = 0;
                     drag_y = 0;
                     },
-                Event::MouseButtonDown{ .. } => {
+                Event::MouseButtonDown{which, .. } if which != SDL_TOUCH_MOUSEID => {
                     let _state = pump.relative_mouse_state(); //reset relative coordinates
                     drag_x = 0;
                     drag_y = 0;
                     },
-                Event::MouseMotion {x, y, .. } => {
+                Event::MouseMotion {x, y, which, .. } if which != SDL_TOUCH_MOUSEID => {
                     if pump.mouse_state().is_mouse_button_pressed(MouseButton::Left) {
                         let state = pump.relative_mouse_state();
                         drag_x += state.x();
                         drag_y += state.y();
-                        bg_rect.set_x(bg_rect.x() + state.x());
-                        bg_rect.set_y(bg_rect.y() + state.y());
+                        bg_rect_dest.set_x(bg_rect_dest.x() + state.x());
+                        bg_rect_dest.set_y(bg_rect_dest.y() + state.y());
                     } else {
                         let (w1,h1) = canvas.viewport().size();
                         position = view.screen_to_complex(x, y, w1.try_into().unwrap(), h1.try_into().unwrap());
                         draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view).unwrap();
-                        {}}},
+                    {}}},
                 Event::FingerDown {x, y, .. } |
-                Event::FingerMotion {x, y, .. } |
+                Event::FingerMotion {x, y, .. } => {
+                        //println!("event: {:?}",event);
+                        if !touch_zoom_in_progress {
+                            let (w1,h1) = canvas.viewport().size();
+                            let x = (x*w1 as f32).floor() as i32;
+                            let y = (y*h1 as f32).floor() as i32;
+                            draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view).unwrap();
+                        }
+                        {}},
                 Event::FingerUp {x, y, .. }  => {
+                        println!("event: {:?}",event);
                         let (w1,h1) = canvas.viewport().size();
                         let x = (x*w1 as f32).floor() as i32;
                         let y = (y*h1 as f32).floor() as i32;
+
+                        if touch_zoom_in_progress {
+                            touch_zoom_in_progress = false;
+                            let (zx,zy) = (touch_zoom_pos.x(),touch_zoom_pos.y());
+                            let complex_pos = view.screen_to_complex(zx, zy, w1.try_into().unwrap(), 
+                                                                             h1.try_into().unwrap());
+                            let zoomies = (bg_rect_src.width() as f64) / (bg_rect_dest.width() as f64);//if y>0 {0.5} else {2.0};
+                            view = view.zoom(complex_pos,zoomies);
+                            bg_rect_dest = Rect::new(0,0,w1,h1);
+                            bg_rect_src = Rect::new(0,0,w1,h1);
+                            bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view, iterations);
+                            //fix this to not need an event to refresh screen
+                            //recopy bg image to screen so that we don't have to wait for an event to refresh screen
+                            canvas.copy(&bg_texture, None, None).unwrap();
+                        }
                         draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view).unwrap();
                         {}},
                 Event::MultiGesture {x, y, d_dist, num_fingers, .. }  => {
                         if num_fingers == 2 {
+                            touch_zoom_in_progress = true;
+                            let (w1,h1) = canvas.viewport().size();
+                            let x = (x*w1 as f32).floor() as i32;
+                            let y = (y*h1 as f32).floor() as i32;
+                            touch_zoom_pos = Point::new(x,y);
                             println!("Touch Zoom {}: {:.4} @ ({},{})",if d_dist>0.0 {"in "} else {"out"},d_dist,x,y);
+                                                                           
+                            //rescale image until FingerUp, then recalculate bg_texture, and reset 
+                            // bg_rect_src, bg_rect_dest, etc.
+                            /*Copies a portion of the texture to the current rendering target.
+                                If src is None, the entire texture is copied.
+                                If dst is None, the texture will be stretched to fill the given rectangle.*/
+                            //todo also do panning with two fingers 
+                            //fix to only adjust one rect if the other hasn't yet been modified.  i.e. pinch zoom isn't finished yet
+                            if d_dist>0.0 { //zoom in
+                                let new_width = ((bg_rect_src.width() as f32) * (1.0-10.0*d_dist)) as u32;
+                                let new_height = ((bg_rect_src.height() as f32) * (1.0-10.0*d_dist)) as u32;
+                                bg_rect_src.set_width(new_width);
+                                bg_rect_src.set_height(new_height);
+                                bg_rect_src.center_on(Point::new(x,y));
+                                bg_rect_dest = Rect::new(0,0,w1,h1); //initial_bg_rect.clone(); //maybe don't reset dest?
+                            } else { //zoom out
+                                bg_rect_src = Rect::new(0,0,w1,h1); //initial_bg_rect.clone(); //maybe don't reset src? 
+                                                                                //remember d_dist is negative here
+                                let new_width = ((bg_rect_dest.width() as f32) * (1.0+10.0*d_dist)) as u32;
+                                let new_height = ((bg_rect_dest.height() as f32) * (1.0+10.0*d_dist)) as u32;
+                                bg_rect_dest.set_width(new_width);
+                                bg_rect_dest.set_height(new_height);
+                                bg_rect_dest.center_on(Point::new(x,y));
+                            }
+                        }//num_fingers == 2
+                        else {
+                            println!("Multi-touch num_fingers: {}",num_fingers);
                         }
-                    },
+                    }, //Event::MultiGesture
                 Event::MouseWheel {y, .. } => {
                         let mouse_state = pump.mouse_state();
                         let (mx,my) = (mouse_state.x(),mouse_state.y());     
@@ -241,14 +309,16 @@ fn main() -> Result<(), String> {
                         let new_size = canvas.viewport().size();
                         let nx = new_size.0;
                         let ny = new_size.1;
-                        bg_rect = Rect::new(0, 0, nx, ny);
+                        bg_rect_dest = Rect::new(0, 0, nx, ny);
                         //fix this to not need an event to refresh screen
                         bg_texture = update_bg(&mut canvas, &creator, nx, ny, &view, iterations);
                     },
-                _ => {}
+                _ => { 
+                        //println!("unhandeled event: {:?}",event);
+                     }
             } //match event
             potential_event = pump.poll_event();
-        } //while
+        } //while events
 
         if show_coords_q {
             let tmp = format!("{:.8} {:+.8}i",position.re,position.im);
@@ -264,7 +334,7 @@ fn main() -> Result<(), String> {
             canvas.copy(&coord_disp_texture, None, text_rect)?;
         }
         canvas.present();
-    };
+    }; //mainloop
 
     println!("Exiting...");
     Ok(()) 
