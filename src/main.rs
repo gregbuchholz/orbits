@@ -11,14 +11,16 @@ use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Point;
 use sdl2::rect::Rect;
 use sdl2::render::TextureCreator;
-use sdl2::render::RenderTarget;
 use sdl2::video::WindowContext;
 use std::path::Path;
 use sdl2::render::TextureQuery;
 //use sdl2::mouse::Cursor;
 //use sdl2::surface::Surface;
+extern crate itertools;
+use itertools::Itertools;
 
-const SDL_TOUCH_MOUSEID:u32 = 0xFFFF_FFFF;
+const SDL_TOUCH_MOUSEID:u32 = u32::MAX;
+
 const INITIAL_ITERATIONS:u32 = 50;
 //const CURSOR_SIZE_BYTES:usize = 11*11*4;
 
@@ -143,6 +145,7 @@ fn main() -> Result<(), String> {
     let mut show_coords_q = true;
     let mut touch_zoom_in_progress = false;
     let mut touch_zoom_pos = Point::new(0,0);
+    let mut orbit_points:Vec<Point> = Vec::new();
 
     let mut pump = sdl_context.event_pump().unwrap();
     let mut position = Complex { re:0.0, im:0.0 };
@@ -151,9 +154,6 @@ fn main() -> Result<(), String> {
 
         let mut potential_event = Some(pump.wait_event()); //Blocking call will always succeed
         
-        canvas.set_draw_color(Color::RGBA(255,255,255,255));
-        canvas.clear(); 
-        canvas.copy(&bg_texture, bg_rect_src, bg_rect_dest).unwrap();
 
         while let Some(event) = potential_event {
             match event {
@@ -185,8 +185,6 @@ fn main() -> Result<(), String> {
                     bg_rect_src = Rect::new(0,0,w1,h1); 
                     bg_rect_dest = Rect::new(0,0,w1,h1);
                     bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view,iterations);
-                    //fix copy below so that each branch doesn't need to do this
-                    canvas.copy(&bg_texture, None, bg_rect_dest).unwrap();
                     },
                 Event::MouseButtonUp {which, .. } if which != SDL_TOUCH_MOUSEID => {
                     //recalculate new view bounding box
@@ -200,8 +198,6 @@ fn main() -> Result<(), String> {
                     bg_rect_dest = Rect::new(0, 0, w1, h1);
                     //recalculate bg image 
                     bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view, iterations);
-                    //recopy bg image to screen so that we don't have to wait for an event to refresh screen
-                    canvas.copy(&bg_texture, None, bg_rect_dest).unwrap();
                     let _state = pump.relative_mouse_state(); //reset relative coordinates
                     drag_x = 0;
                     drag_y = 0;
@@ -221,7 +217,7 @@ fn main() -> Result<(), String> {
                     } else {
                         let (w1,h1) = canvas.viewport().size();
                         position = view.screen_to_complex(x, y, w1.try_into().unwrap(), h1.try_into().unwrap());
-                        draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view).unwrap();
+                        orbit_points = calc_orbits(x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view);
                     {}}},
                 Event::FingerDown {x, y, .. } |
                 Event::FingerMotion {x, y, .. } => {
@@ -230,7 +226,7 @@ fn main() -> Result<(), String> {
                             let (w1,h1) = canvas.viewport().size();
                             let x = (x*w1 as f32).floor() as i32;
                             let y = (y*h1 as f32).floor() as i32;
-                            draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view).unwrap();
+                            orbit_points = calc_orbits(x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view);
                         }
                         {}},
                 Event::FingerUp {x, y, .. }  => {
@@ -249,11 +245,8 @@ fn main() -> Result<(), String> {
                             bg_rect_dest = Rect::new(0,0,w1,h1);
                             bg_rect_src = Rect::new(0,0,w1,h1);
                             bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view, iterations);
-                            //fix this to not need an event to refresh screen
-                            //recopy bg image to screen so that we don't have to wait for an event to refresh screen
-                            canvas.copy(&bg_texture, None, None).unwrap();
                         }
-                        draw_orbits(&mut canvas,x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view).unwrap();
+                        orbit_points = calc_orbits(x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view);
                         {}},
                 Event::MultiGesture {x, y, d_dist, num_fingers, .. }  => {
                         if num_fingers == 2 {
@@ -320,6 +313,13 @@ fn main() -> Result<(), String> {
             } //match event
             potential_event = pump.poll_event();
         } //while events
+        
+        canvas.set_draw_color(Color::RGBA(255,255,255,255));
+        canvas.clear(); 
+        canvas.copy(&bg_texture, bg_rect_src, bg_rect_dest).unwrap();
+
+        //draw orbits 
+        draw_orbits(&mut canvas, &orbit_points)?;
 
         if show_coords_q {
             let tmp = format!("{:.8} {:+.8}i",position.re,position.im);
@@ -341,28 +341,41 @@ fn main() -> Result<(), String> {
     Ok(()) 
 }
 
-fn draw_orbits<T:RenderTarget>(canvas:&mut sdl2::render::Canvas<T>, 
-                x: i32, y: i32, w: i32, h:i32, view:& ComplexBBox) -> Result<(), String> {
+fn calc_orbits(x: i32, y: i32, w: i32, h:i32, view:& ComplexBBox) -> Vec<Point> {
     let iter = 50;
     let limit_sqr = 2.0 * 2.0;
     let c = view.screen_to_complex(x,y,w,h);
     let mut z = Complex{re: 0.0, im: 0.0};
+    let mut points = Vec::new();
    
-    for i in 0 .. iter {
+    points.push(view.complex_to_screen(z,w,h)); //origin
+    points.push(view.complex_to_screen(c,w,h)); //first point/mouse cursor position
+
+    for _i in 0 .. iter {
         let z_next = z*z + c;
         if z_next.norm_sqr() > limit_sqr {
             break;
         }
-        let p1 = view.complex_to_screen(z,w,h);
-        let p2 = view.complex_to_screen(z_next,w,h);
+        points.push(view.complex_to_screen(z_next,w,h));
+        z = z_next;
+    }
 
-        if i == 0 {
+    points
+}
+
+fn draw_orbits(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>, ps:& Vec<Point>) -> 
+    Result<(), String> {
+    
+    let mut first_q = true;
+
+    for (p1,p2) in ps.iter().tuple_windows() { 
+        if first_q {
+            first_q = false;
             canvas.set_draw_color(Color::RGBA(255,0,0,255));
         } else {
             canvas.set_draw_color(Color::RGBA(0,255,0,255));
         }
-        canvas.draw_line(p1,p2)?;
-        z = z_next;
+        canvas.draw_line(*p1,*p2)?;
     }
 
     Ok(())
