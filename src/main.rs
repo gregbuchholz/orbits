@@ -1,8 +1,9 @@
 //Mandelbrot Orbits
-extern crate sdl2;
-
 use std::convert::TryInto;
+use std::time::{Duration, Instant};
 use num::Complex;
+
+extern crate sdl2;
 use sdl2::event::Event;
 use sdl2::event::WindowEvent;
 use sdl2::keyboard::Keycode;
@@ -78,13 +79,9 @@ fn main() -> Result<(), String> {
 
     #[cfg(target_os = "emscripten")]
     {
-        //let h1 = sdl2::hint::get("SDL_EMSCRIPTEN_ASYNCIFY");
-        let _h2 = sdl2::hint::set("SDL_EMSCRIPTEN_ASYNCIFY","1");
-        //let h3 = sdl2::hint::get("SDL_EMSCRIPTEN_ASYNCIFY");
-        //println!("h1:{:?}, h2: {:?}, h3:{:?}",h1,h2,h3);
+        let _ = sdl2::hint::set("SDL_EMSCRIPTEN_ASYNCIFY","1");
     }
 
-    //println!("Hello, Benoit B. Mandelbrot!");
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?; 
     let window = video_subsystem
@@ -93,7 +90,8 @@ fn main() -> Result<(), String> {
         .resizable()
         .build()
         .map_err(|e| e.to_string())?;
-    let mut canvas = window.into_canvas().software().build().map_err(|e| e.to_string())?;
+    let mut canvas = window.into_canvas().accelerated().build().map_err(|e| e.to_string())?;
+    println!("renderer info: {:?}",canvas.info());
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
     //desktop_display_mode
     //current_display_mode
@@ -123,25 +121,6 @@ fn main() -> Result<(), String> {
     let font_path = Path::new("assets/DejaVuSansMono.ttf");
     let font = ttf_context.load_font(font_path, 12)?;
 
-    //Seems like the "surface" cursor is slowing things down in the browser.  Investigate further
-    //Is it "software" rendering instead of a hardware accelerated "texture"?
-/*
-    let mut cursor_raw = cursor_pixels();
-    let cursor_surface = Surface::from_data(&mut cursor_raw, 11, 11, 4*11, PixelFormatEnum::RGBA8888).unwrap();
-    let potential_cursor = Cursor::from_surface(&cursor_surface,5,5);
-    let cursor = match potential_cursor {
-        Ok(cursor) => cursor,
-        _ => panic!("cursor failed!")
-    };
-    cursor.set();
-*/
-    //Maybe try a SystemCursor::Crosshair, or SystemCursor::No
-/*
-    //From C-SDL
-    SDL_Cursor* cursor;
-    cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_HAND);
-    SDL_SetCursor(cursor);
-*/
     let red = Color::RGBA(255,0,0,255);
     let green = Color::RGBA(0,255,0,255);
     let _blue = Color::RGBA(0,0,255,255);
@@ -184,7 +163,7 @@ fn main() -> Result<(), String> {
                     },
                 Event::KeyDown {keycode: Some(Keycode::Home),..} => { 
                     view = initial_view;
-                    let iterations = INITIAL_ITERATIONS;
+                    iterations = INITIAL_ITERATIONS;
                     bg_rect_src = Rect::new(0,0,win_size.0,win_size.1); 
                     bg_rect_dest = Rect::new(0,0,win_size.0,win_size.1);
                     bg_texture = update_bg(&mut canvas, &creator, win_size.0, win_size.1, &view,iterations);
@@ -305,7 +284,10 @@ fn main() -> Result<(), String> {
                         let ny = new_size.1;
                         bg_rect_src = Rect::new(0, 0, nx, ny);
                         bg_rect_dest = Rect::new(0, 0, nx, ny);
+                         let before = Instant::now();
                         bg_texture = update_bg(&mut canvas, &creator, nx, ny, &view, iterations);
+                         let after = before.elapsed();
+                         println!("Resize time: {:?}",after);
                     },
                 _ => { 
                         println!("unhandeled event: {:?}",event);
@@ -357,7 +339,6 @@ fn main() -> Result<(), String> {
 fn calc_orbits(c: Complex<f64>) -> Vec<Complex<f64>> {
     let iter = 50;
     let limit_sqr = 2.0 * 2.0;
-    //let c = view.screen_to_complex(x,y,w,h);
     let mut z = Complex{re: 0.0, im: 0.0};
     let mut points = Vec::new();
    
@@ -397,7 +378,7 @@ fn draw_orbits(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>, ps:& Vec<
 fn update_bg<'a>(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
     texture_creator: &'a TextureCreator<WindowContext>, win_x:u32, win_y:u32, view:&ComplexBBox, iter:u32 ) -> sdl2::render::Texture<'a> {
     let mut bg_texture = texture_creator
-        .create_texture_target(PixelFormatEnum::RGBA8888, win_x, win_y)
+        .create_texture_target(PixelFormatEnum::ARGB8888, win_x, win_y)
         .map_err(|e| e.to_string()).unwrap();
 
     canvas.with_texture_canvas(&mut bg_texture, |texture_canvas| {
@@ -433,24 +414,3 @@ fn update_bg<'a>(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
             }).map_err(|e| e.to_string()).unwrap();
     bg_texture
 }
-
-/*
-fn cursor_pixels() -> [u8; CURSOR_SIZE_BYTES] {
-
-    //Change mouse cursor to 11x11 pixel crosshairs
-    let mut cursor_raw:[u8; CURSOR_SIZE_BYTES] = [0; CURSOR_SIZE_BYTES];
-    for i in 0..11 {
-        //vertical
-        cursor_raw[i*11*4+20] = 255; //Alpha
-        cursor_raw[i*11*4+21] = 255; //Blue
-        cursor_raw[i*11*4+22] = 128; //Green
-        cursor_raw[i*11*4+23] = 0; //Red
-        //horizontal
-        cursor_raw[5*11*4+i*4+0] = 255;
-        cursor_raw[5*11*4+i*4+1] = 255;
-        cursor_raw[5*11*4+i*4+2] = 128;
-        cursor_raw[5*11*4+i*4+3] = 0;
-    }
-    cursor_raw
-}
-*/
