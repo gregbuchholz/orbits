@@ -142,18 +142,30 @@ fn main() -> Result<(), String> {
     cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_HAND);
     SDL_SetCursor(cursor);
 */
+    let red = Color::RGBA(255,0,0,255);
+    let green = Color::RGBA(0,255,0,255);
+    let _blue = Color::RGBA(0,0,255,255);
+    let cyan = Color::RGBA(0,255,255,255);
+    let magenta = Color::RGBA(255,0,255,255);
+    let white = Color::RGBA(255,255,255,255);
+
     let mut show_coords_q = true;
     let mut touch_zoom_in_progress = false;
     let mut touch_zoom_pos = Point::new(0,0);
 
     let mut pump = sdl_context.event_pump().unwrap();
     let mut position = Complex { re:0.0, im:0.0 };
+    let mut saved_orbits:Vec<Complex<f64>> = Vec::new();
 
     'mainloop: loop {
 
         let mut potential_event = Some(pump.wait_event()); //Blocking call will always succeed
         
         while let Some(event) = potential_event {
+            let win_size = canvas.viewport().size();
+            let win_width:i32 = win_size.0.try_into().unwrap(); 
+            let win_height:i32 = win_size.1.try_into().unwrap(); 
+
             match event {
                 Event::KeyDown {keycode: Some(Keycode::Escape),..} | 
                 Event::Quit { .. } => { 
@@ -164,10 +176,7 @@ fn main() -> Result<(), String> {
                     },
                 Event::KeyDown {keycode: Some(Keycode::I),..} => { 
                     iterations *= 2;
-                    let size = canvas.viewport().size();
-                    let w1 = size.0;
-                    let h1 = size.1;
-                    bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view,iterations);
+                    bg_texture = update_bg(&mut canvas, &creator, win_size.0, win_size.1, &view,iterations);
                     },
                 Event::KeyDown {keycode: Some(Keycode::F),..} => { 
                     //"F" -> full screen mode
@@ -176,31 +185,38 @@ fn main() -> Result<(), String> {
                 Event::KeyDown {keycode: Some(Keycode::Home),..} => { 
                     view = initial_view;
                     let iterations = INITIAL_ITERATIONS;
-                    let size = canvas.viewport().size();
-                    let w1 = size.0;
-                    let h1 = size.1;
-                    bg_rect_src = Rect::new(0,0,w1,h1); 
-                    bg_rect_dest = Rect::new(0,0,w1,h1);
-                    bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view,iterations);
+                    bg_rect_src = Rect::new(0,0,win_size.0,win_size.1); 
+                    bg_rect_dest = Rect::new(0,0,win_size.0,win_size.1);
+                    bg_texture = update_bg(&mut canvas, &creator, win_size.0, win_size.1, &view,iterations);
                     },
-                Event::MouseButtonUp {which, .. } if which != SDL_TOUCH_MOUSEID => {
+                Event::MouseButtonUp {which, mouse_btn, .. } if which != SDL_TOUCH_MOUSEID => {
                     //recalculate new view bounding box
-                    let size = canvas.viewport().size();
-                    let w1 = size.0;
-                    let h1 = size.1;
-                    let shift = view.complex_deltas(w1.try_into().unwrap(), h1.try_into().unwrap(), 
-                                                    drag_x, drag_y);
-                    view = ComplexBBox {ll: view.ll-shift, ur: view.ur-shift};
-                    bg_rect_dest = Rect::new(0, 0, w1, h1);//reset bg_rect
-                    bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view, iterations);
-                    let _state = pump.relative_mouse_state(); //reset relative coordinates
-                    drag_x = 0;
-                    drag_y = 0;
+                    if mouse_btn == MouseButton::Left {
+                        let shift = view.complex_deltas(win_width, win_height, drag_x, drag_y);
+                        view = ComplexBBox {ll: view.ll-shift, ur: view.ur-shift};
+                        bg_rect_dest = Rect::new(0, 0, win_size.0, win_size.1);//reset bg_rect
+                        bg_texture = update_bg(&mut canvas, &creator, win_size.0, win_size.1, &view, iterations);
+                        let _state = pump.relative_mouse_state(); //reset relative coordinates
+                        drag_x = 0;
+                        drag_y = 0;
+                    }
                     },
-                Event::MouseButtonDown{which, .. } if which != SDL_TOUCH_MOUSEID => {
-                    let _state = pump.relative_mouse_state(); //reset relative coordinates in SDL land
-                    drag_x = 0;
-                    drag_y = 0;
+                Event::MouseButtonDown{which, mouse_btn, .. } if which != SDL_TOUCH_MOUSEID => {
+                    match mouse_btn {
+                        MouseButton::Left => {
+                            let _state = pump.relative_mouse_state(); //reset relative coordinates in SDL land
+                            drag_x = 0;
+                            drag_y = 0;
+                        },
+                        MouseButton::Right => {
+                            let mouse_state = pump.mouse_state();
+                            let (mx,my) = (mouse_state.x(),mouse_state.y());     
+                            println!("right button down");
+                            let c = view.screen_to_complex(mx,my,win_width,win_height);
+                            saved_orbits = calc_orbits(c);
+                        },
+                        _ => { println!("unhandeled mouse button"); }
+                    }
                     },
                 Event::MouseMotion {x, y, which, .. } if which != SDL_TOUCH_MOUSEID => {
                     if pump.mouse_state().is_mouse_button_pressed(MouseButton::Left) {
@@ -210,8 +226,7 @@ fn main() -> Result<(), String> {
                         bg_rect_dest.set_x(bg_rect_dest.x() + state.x());
                         bg_rect_dest.set_y(bg_rect_dest.y() + state.y());
                     } else {
-                        let (w1,h1) = canvas.viewport().size();
-                        position = view.screen_to_complex(x, y, w1.try_into().unwrap(), h1.try_into().unwrap());
+                        position = view.screen_to_complex(x, y, win_width, win_height);
                     {}}},
                 Event::FingerDown {x, y, .. } |
                 Event::FingerMotion {x, y, .. } => {
@@ -219,38 +234,29 @@ fn main() -> Result<(), String> {
                         //println!("event: {:?}",event);
                         /*
                         if !touch_zoom_in_progress {
-                            let (w1,h1) = canvas.viewport().size();
-                            let x = (x*w1 as f32).floor() as i32;
-                            let y = (y*h1 as f32).floor() as i32;
                             //orbit_points = calc_orbits(x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view);
                         }*/
                         {}},
                 Event::FingerUp {x:_, y:_, .. }  => {
-                        println!("event: {:?}",event);
-                        let (w1,h1) = canvas.viewport().size();
-                        //let x = (x*w1 as f32).floor() as i32;
-                        //let y = (y*h1 as f32).floor() as i32;
-
                         if touch_zoom_in_progress {
                             touch_zoom_in_progress = false;
                             let (zx,zy) = (touch_zoom_pos.x(),touch_zoom_pos.y());
-                            let complex_pos = view.screen_to_complex(zx, zy, w1.try_into().unwrap(), 
-                                                                             h1.try_into().unwrap());
+                            let complex_pos = view.screen_to_complex(zx, zy, win_width, win_height);
                             let zoomies = (bg_rect_src.width() as f64) / (bg_rect_dest.width() as f64);//if y>0 {0.5} else {2.0};
                             view = view.zoom(complex_pos,zoomies);
-                            bg_rect_dest = Rect::new(0,0,w1,h1);
-                            bg_rect_src = Rect::new(0,0,w1,h1);
-                            bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view, iterations);
+                            bg_rect_dest = Rect::new(0,0,win_size.0,win_size.1);
+                            bg_rect_src = Rect::new(0,0,win_size.0,win_size.1);
+                            bg_texture = update_bg(&mut canvas, &creator, win_size.0, win_size.1, 
+                                                    &view, iterations);
                         }
                         {}},
                 Event::MultiGesture {x, y, d_dist, num_fingers, .. }  => {
                         if num_fingers == 2 {
                             touch_zoom_in_progress = true;
-                            let (w1,h1) = canvas.viewport().size();
-                            let x = (x*w1 as f32).floor() as i32;
-                            let y = (y*h1 as f32).floor() as i32;
+                            let x = (x*win_width as f32).floor() as i32;
+                            let y = (y*win_height as f32).floor() as i32;
                             touch_zoom_pos = Point::new(x,y);
-                            println!("Touch Zoom {}: {:.4} @ ({},{})",if d_dist>0.0 {"in "} else {"out"},d_dist,x,y);
+                            //println!("Touch Zoom {}: {:.4} @ ({},{})",if d_dist>0.0 {"in "} else {"out"},d_dist,x,y);
                                                                            
                             //rescale image until FingerUp, then recalculate bg_texture, and reset 
                             // bg_rect_src, bg_rect_dest, etc.
@@ -265,9 +271,9 @@ fn main() -> Result<(), String> {
                                 bg_rect_src.set_width(new_width);
                                 bg_rect_src.set_height(new_height);
                                 bg_rect_src.center_on(Point::new(x,y));
-                                bg_rect_dest = Rect::new(0,0,w1,h1); //initial_bg_rect.clone(); //maybe don't reset dest?
+                                bg_rect_dest = Rect::new(0,0,win_size.0,win_size.1); //initial_bg_rect.clone(); //maybe don't reset dest?
                             } else { //zoom out
-                                bg_rect_src = Rect::new(0,0,w1,h1); //initial_bg_rect.clone(); //maybe don't reset src? 
+                                bg_rect_src = Rect::new(0,0,win_size.0,win_size.1); //initial_bg_rect.clone(); //maybe don't reset src? 
                                                                                 //remember d_dist is negative here
                                 let new_width = ((bg_rect_dest.width() as f32) * (1.0+10.0*d_dist)) as u32;
                                 let new_height = ((bg_rect_dest.height() as f32) * (1.0+10.0*d_dist)) as u32;
@@ -283,13 +289,14 @@ fn main() -> Result<(), String> {
                 Event::MouseWheel {y, .. } => {
                         let mouse_state = pump.mouse_state();
                         let (mx,my) = (mouse_state.x(),mouse_state.y());     
-                        let (w1,h1) = canvas.viewport().size();
-                        let complex_pos = view.screen_to_complex(mx, my, w1.try_into().unwrap(), 
-                                                                         h1.try_into().unwrap());
+                        //let (w1,h1) = canvas.viewport().size();
+                        let complex_pos = view.screen_to_complex(mx, my, win_width, 
+                                                                         win_height);
                         //println!("Zoom {} @ {:?}",if y>0 {"in"} else {"out"},(mx,my));
                         let zoomies = if y>0 {0.5} else {2.0};
                         view = view.zoom(complex_pos,zoomies);
-                        bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view, iterations);
+                        bg_texture = update_bg(&mut canvas, &creator, win_size.0, win_size.1, 
+                                                &view, iterations);
                     },
                 Event::Window {win_event: WindowEvent::SizeChanged(x,y), .. } => { 
                         println!("Got Size change -- x:{}, y:{}",x,y);
@@ -307,7 +314,7 @@ fn main() -> Result<(), String> {
             potential_event = pump.poll_event();
         } //while events
         
-        canvas.set_draw_color(Color::RGBA(255,255,255,255));
+        canvas.set_draw_color(white);
         canvas.clear(); 
         canvas.copy(&bg_texture, bg_rect_src, bg_rect_dest).unwrap();
 
@@ -319,8 +326,12 @@ fn main() -> Result<(), String> {
             let (mx,my) = (mouse_state.x(),mouse_state.y());     
             let c = view.screen_to_complex(mx,my,w,h);
             let orbit_points = calc_orbits(c);
-            let screen_points = orbit_points.iter().map(|x| {view.complex_to_screen(*x,w,h)});
-            draw_orbits(&mut canvas, &screen_points.collect())?;
+            let current_points = orbit_points.iter().map(|x| {view.complex_to_screen(*x,w,h)});
+            draw_orbits(&mut canvas, &current_points.collect(), red, green)?;
+            if saved_orbits.len() > 0 {
+                let saved_points = saved_orbits.iter().map(|x| {view.complex_to_screen(*x,w,h)});
+                draw_orbits(&mut canvas, &saved_points.collect(), magenta, cyan)?;
+            }
         }
 
         if show_coords_q {
@@ -343,7 +354,6 @@ fn main() -> Result<(), String> {
     Ok(()) 
 }
 
-//convert to iterator
 fn calc_orbits(c: Complex<f64>) -> Vec<Complex<f64>> {
     let iter = 50;
     let limit_sqr = 2.0 * 2.0;
@@ -366,17 +376,17 @@ fn calc_orbits(c: Complex<f64>) -> Vec<Complex<f64>> {
     points
 }
 
-fn draw_orbits(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>, ps:& Vec<Point>) -> 
-    Result<(), String> {
+fn draw_orbits(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>, ps:& Vec<Point>, 
+        c1: Color, c2: Color) -> Result<(), String> {
     
     let mut first_q = true;
 
     for (p1,p2) in ps.iter().tuple_windows() { 
         if first_q {
             first_q = false;
-            canvas.set_draw_color(Color::RGBA(255,0,0,255));
+            canvas.set_draw_color(c1);
         } else {
-            canvas.set_draw_color(Color::RGBA(0,255,0,255));
+            canvas.set_draw_color(c2);
         }
         canvas.draw_line(*p1,*p2)?;
     }
