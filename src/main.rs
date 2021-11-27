@@ -145,7 +145,6 @@ fn main() -> Result<(), String> {
     let mut show_coords_q = true;
     let mut touch_zoom_in_progress = false;
     let mut touch_zoom_pos = Point::new(0,0);
-    let mut orbit_points:Vec<Point> = Vec::new();
 
     let mut pump = sdl_context.event_pump().unwrap();
     let mut position = Complex { re:0.0, im:0.0 };
@@ -154,7 +153,6 @@ fn main() -> Result<(), String> {
 
         let mut potential_event = Some(pump.wait_event()); //Blocking call will always succeed
         
-
         while let Some(event) = potential_event {
             match event {
                 Event::KeyDown {keycode: Some(Keycode::Escape),..} | 
@@ -169,7 +167,6 @@ fn main() -> Result<(), String> {
                     let size = canvas.viewport().size();
                     let w1 = size.0;
                     let h1 = size.1;
-                    //fix this to not need an event to refresh screen
                     bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view,iterations);
                     },
                 Event::KeyDown {keycode: Some(Keycode::F),..} => { 
@@ -194,16 +191,14 @@ fn main() -> Result<(), String> {
                     let shift = view.complex_deltas(w1.try_into().unwrap(), h1.try_into().unwrap(), 
                                                     drag_x, drag_y);
                     view = ComplexBBox {ll: view.ll-shift, ur: view.ur-shift};
-                    //reset bg_rect
-                    bg_rect_dest = Rect::new(0, 0, w1, h1);
-                    //recalculate bg image 
+                    bg_rect_dest = Rect::new(0, 0, w1, h1);//reset bg_rect
                     bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view, iterations);
                     let _state = pump.relative_mouse_state(); //reset relative coordinates
                     drag_x = 0;
                     drag_y = 0;
                     },
                 Event::MouseButtonDown{which, .. } if which != SDL_TOUCH_MOUSEID => {
-                    let _state = pump.relative_mouse_state(); //reset relative coordinates
+                    let _state = pump.relative_mouse_state(); //reset relative coordinates in SDL land
                     drag_x = 0;
                     drag_y = 0;
                     },
@@ -217,23 +212,24 @@ fn main() -> Result<(), String> {
                     } else {
                         let (w1,h1) = canvas.viewport().size();
                         position = view.screen_to_complex(x, y, w1.try_into().unwrap(), h1.try_into().unwrap());
-                        orbit_points = calc_orbits(x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view);
                     {}}},
                 Event::FingerDown {x, y, .. } |
                 Event::FingerMotion {x, y, .. } => {
+                        let _ignore = (x,y);
                         //println!("event: {:?}",event);
+                        /*
                         if !touch_zoom_in_progress {
                             let (w1,h1) = canvas.viewport().size();
                             let x = (x*w1 as f32).floor() as i32;
                             let y = (y*h1 as f32).floor() as i32;
-                            orbit_points = calc_orbits(x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view);
-                        }
+                            //orbit_points = calc_orbits(x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view);
+                        }*/
                         {}},
-                Event::FingerUp {x, y, .. }  => {
+                Event::FingerUp {x:_, y:_, .. }  => {
                         println!("event: {:?}",event);
                         let (w1,h1) = canvas.viewport().size();
-                        let x = (x*w1 as f32).floor() as i32;
-                        let y = (y*h1 as f32).floor() as i32;
+                        //let x = (x*w1 as f32).floor() as i32;
+                        //let y = (y*h1 as f32).floor() as i32;
 
                         if touch_zoom_in_progress {
                             touch_zoom_in_progress = false;
@@ -246,7 +242,6 @@ fn main() -> Result<(), String> {
                             bg_rect_src = Rect::new(0,0,w1,h1);
                             bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view, iterations);
                         }
-                        orbit_points = calc_orbits(x,y,w1.try_into().unwrap(),h1.try_into().unwrap(),&view);
                         {}},
                 Event::MultiGesture {x, y, d_dist, num_fingers, .. }  => {
                         if num_fingers == 2 {
@@ -294,7 +289,6 @@ fn main() -> Result<(), String> {
                         //println!("Zoom {} @ {:?}",if y>0 {"in"} else {"out"},(mx,my));
                         let zoomies = if y>0 {0.5} else {2.0};
                         view = view.zoom(complex_pos,zoomies);
-                        //fix this to not need an event to refresh screen
                         bg_texture = update_bg(&mut canvas, &creator, w1, h1, &view, iterations);
                     },
                 Event::Window {win_event: WindowEvent::SizeChanged(x,y), .. } => { 
@@ -304,7 +298,6 @@ fn main() -> Result<(), String> {
                         let ny = new_size.1;
                         bg_rect_src = Rect::new(0, 0, nx, ny);
                         bg_rect_dest = Rect::new(0, 0, nx, ny);
-                        //fix this to not need an event to refresh screen
                         bg_texture = update_bg(&mut canvas, &creator, nx, ny, &view, iterations);
                     },
                 _ => { 
@@ -318,8 +311,17 @@ fn main() -> Result<(), String> {
         canvas.clear(); 
         canvas.copy(&bg_texture, bg_rect_src, bg_rect_dest).unwrap();
 
-        //draw orbits 
-        draw_orbits(&mut canvas, &orbit_points)?;
+        //draw orbits for current position
+        {
+            let (w1,h1) = canvas.viewport().size();
+            let (w,h) = (w1.try_into().unwrap(),h1.try_into().unwrap());
+            let mouse_state = pump.mouse_state();
+            let (mx,my) = (mouse_state.x(),mouse_state.y());     
+            let c = view.screen_to_complex(mx,my,w,h);
+            let orbit_points = calc_orbits(c);
+            let screen_points = orbit_points.iter().map(|x| {view.complex_to_screen(*x,w,h)});
+            draw_orbits(&mut canvas, &screen_points.collect())?;
+        }
 
         if show_coords_q {
             let tmp = format!("{:.8} {:+.8}i",position.re,position.im);
@@ -341,22 +343,23 @@ fn main() -> Result<(), String> {
     Ok(()) 
 }
 
-fn calc_orbits(x: i32, y: i32, w: i32, h:i32, view:& ComplexBBox) -> Vec<Point> {
+//convert to iterator
+fn calc_orbits(c: Complex<f64>) -> Vec<Complex<f64>> {
     let iter = 50;
     let limit_sqr = 2.0 * 2.0;
-    let c = view.screen_to_complex(x,y,w,h);
+    //let c = view.screen_to_complex(x,y,w,h);
     let mut z = Complex{re: 0.0, im: 0.0};
     let mut points = Vec::new();
    
-    points.push(view.complex_to_screen(z,w,h)); //origin
-    points.push(view.complex_to_screen(c,w,h)); //first point/mouse cursor position
+    points.push(z); //origin
+    points.push(c); //first point/mouse cursor position
 
     for _i in 0 .. iter {
         let z_next = z*z + c;
         if z_next.norm_sqr() > limit_sqr {
             break;
         }
-        points.push(view.complex_to_screen(z_next,w,h));
+        points.push(z_next);
         z = z_next;
     }
 
