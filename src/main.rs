@@ -1,6 +1,6 @@
 //Mandelbrot Orbits
 use std::convert::TryInto;
-use std::time::{Duration, Instant};
+use std::time::{Instant};
 use num::Complex;
 
 extern crate sdl2;
@@ -11,19 +11,14 @@ use sdl2::mouse::MouseButton;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Point;
 use sdl2::rect::Rect;
-use sdl2::render::TextureCreator;
-use sdl2::video::WindowContext;
 use std::path::Path;
 use sdl2::render::TextureQuery;
-//use sdl2::mouse::Cursor;
-//use sdl2::surface::Surface;
 extern crate itertools;
 use itertools::Itertools;
 
 const SDL_TOUCH_MOUSEID:u32 = u32::MAX;
 
 const INITIAL_ITERATIONS:u32 = 50;
-//const CURSOR_SIZE_BYTES:usize = 11*11*4;
 
 #[derive(Copy, Clone)]
 struct ComplexBBox {
@@ -114,7 +109,11 @@ fn main() -> Result<(), String> {
     let mut bg_rect_dest = initial_bg_rect.clone();
     let mut bg_rect_src = initial_bg_rect.clone(); 
 
-    let mut bg_texture = update_bg(&mut canvas, &creator, initial_width, initial_height, &view, iterations);
+    let mut bg_texture = creator
+        .create_texture_streaming(PixelFormatEnum::ARGB8888, initial_width, initial_height)
+        .map_err(|e| e.to_string()).unwrap();
+    update_bg(&mut bg_texture, &view, iterations);
+
     let mut drag_x:i32 = 0_i32;
     let mut drag_y:i32 = 0;
     
@@ -155,10 +154,12 @@ fn main() -> Result<(), String> {
                     },
                 Event::KeyDown {keycode: Some(Keycode::I),..} => { 
                     iterations *= 2;
-                    bg_texture = update_bg(&mut canvas, &creator, win_size.0, win_size.1, &view,iterations);
+                    update_bg(&mut bg_texture, &view, iterations);
                     },
                 Event::KeyDown {keycode: Some(Keycode::F),..} => { 
                     //"F" -> full screen mode
+                    //investigate "full screen" in browser, seems to be less than full resolution
+                    //suspicously 20% lower: (1138 x 640) instead of (1366 x 768)
                     canvas.window_mut().set_fullscreen(sdl2::video::FullscreenType::Desktop)?;
                     },
                 Event::KeyDown {keycode: Some(Keycode::Home),..} => { 
@@ -166,7 +167,7 @@ fn main() -> Result<(), String> {
                     iterations = INITIAL_ITERATIONS;
                     bg_rect_src = Rect::new(0,0,win_size.0,win_size.1); 
                     bg_rect_dest = Rect::new(0,0,win_size.0,win_size.1);
-                    bg_texture = update_bg(&mut canvas, &creator, win_size.0, win_size.1, &view,iterations);
+                    update_bg(&mut bg_texture, &view, iterations);
                     },
                 Event::MouseButtonUp {which, mouse_btn, .. } if which != SDL_TOUCH_MOUSEID => {
                     //recalculate new view bounding box
@@ -174,7 +175,7 @@ fn main() -> Result<(), String> {
                         let shift = view.complex_deltas(win_width, win_height, drag_x, drag_y);
                         view = ComplexBBox {ll: view.ll-shift, ur: view.ur-shift};
                         bg_rect_dest = Rect::new(0, 0, win_size.0, win_size.1);//reset bg_rect
-                        bg_texture = update_bg(&mut canvas, &creator, win_size.0, win_size.1, &view, iterations);
+                        update_bg(&mut bg_texture, &view, iterations);
                         let _state = pump.relative_mouse_state(); //reset relative coordinates
                         drag_x = 0;
                         drag_y = 0;
@@ -225,8 +226,7 @@ fn main() -> Result<(), String> {
                             view = view.zoom(complex_pos,zoomies);
                             bg_rect_dest = Rect::new(0,0,win_size.0,win_size.1);
                             bg_rect_src = Rect::new(0,0,win_size.0,win_size.1);
-                            bg_texture = update_bg(&mut canvas, &creator, win_size.0, win_size.1, 
-                                                    &view, iterations);
+                            update_bg(&mut bg_texture, &view, iterations);
                         }
                         {}},
                 Event::MultiGesture {x, y, d_dist, num_fingers, .. }  => {
@@ -274,8 +274,7 @@ fn main() -> Result<(), String> {
                         //println!("Zoom {} @ {:?}",if y>0 {"in"} else {"out"},(mx,my));
                         let zoomies = if y>0 {0.5} else {2.0};
                         view = view.zoom(complex_pos,zoomies);
-                        bg_texture = update_bg(&mut canvas, &creator, win_size.0, win_size.1, 
-                                                &view, iterations);
+                        update_bg(&mut bg_texture, &view, iterations);
                     },
                 Event::Window {win_event: WindowEvent::SizeChanged(x,y), .. } => { 
                         println!("Got Size change -- x:{}, y:{}",x,y);
@@ -285,7 +284,11 @@ fn main() -> Result<(), String> {
                         bg_rect_src = Rect::new(0, 0, nx, ny);
                         bg_rect_dest = Rect::new(0, 0, nx, ny);
                          let before = Instant::now();
-                        bg_texture = update_bg(&mut canvas, &creator, nx, ny, &view, iterations);
+                        //NEED NEW TEXTURE HERE, CAN'T JUST UPDATE!!
+                        bg_texture = creator
+                            .create_texture_streaming(PixelFormatEnum::ARGB8888, nx, ny)
+                            .map_err(|e| e.to_string()).unwrap();
+                        update_bg(&mut bg_texture, &view, iterations);
                          let after = before.elapsed();
                          println!("Resize time: {:?}",after);
                     },
@@ -375,42 +378,35 @@ fn draw_orbits(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>, ps:& Vec<
     Ok(())
 }
 
-fn update_bg<'a>(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    texture_creator: &'a TextureCreator<WindowContext>, win_x:u32, win_y:u32, view:&ComplexBBox, iter:u32 ) -> sdl2::render::Texture<'a> {
-    let mut bg_texture = texture_creator
-        .create_texture_target(PixelFormatEnum::ARGB8888, win_x, win_y)
-        .map_err(|e| e.to_string()).unwrap();
+fn update_bg(bg_texture: &mut sdl2::render::Texture, view:&ComplexBBox, iter:u32 ) -> () {
+    
+    let TextureQuery{format:_, access:_, width, height} = bg_texture.query();
+    //println!("texture query: {:?} x {:?}, passed: {},{}",width,height,win_width,win_height);
 
-    canvas.with_texture_canvas(&mut bg_texture, |texture_canvas| {
-            let (w1,h1) = texture_canvas.viewport().size();
-            let w:i32 = w1.try_into().unwrap();
-            let h:i32 = h1.try_into().unwrap();
+    let w:usize = width.try_into().unwrap();
+    let h:usize = height.try_into().unwrap();
+            
+    bg_texture.with_lock(None, |pixel_buffer: &mut [u8], pitch: usize| {
+        //TODO: farm this out to multiple threads
+        for y in 0 .. h {
+            for x in 0 .. w {
+                let c = view.screen_to_complex(x.try_into().unwrap(),y.try_into().unwrap(),
+                                               w.try_into().unwrap(),h.try_into().unwrap());
+                let mut z = Complex::<f64>{re: 0.0, im: 0.0};
 
-            texture_canvas.set_draw_color(Color::RGBA(255,255,255,255));
-            texture_canvas.clear();
-
-            for y in 0 .. h {
-                //println!("y: {}",y);
-                for x in 0 .. w {
-                    let c = view.screen_to_complex(x,y,w,h);
-                    let mut z = Complex::<f64>{re: 0.0, im: 0.0};
-
-                    for _i in 0 .. iter {
-                        z = z*z + c;
-                        if z.norm_sqr() > 4.0 { break; }
-                    }
-
-                    if z.norm_sqr() > 4.0 {
-                        texture_canvas.set_draw_color(Color::RGBA(255,255,255,255));
-                    }
-                    else {
-                        texture_canvas.set_draw_color(Color::RGBA(0,0,0,255));
-                    }
-                    //Maybe do something better to get the complier to shut up
-                    //maybe panic if draw_point fails
-                    let _foo = texture_canvas.draw_point(Point::new(x,y));
+                for _i in 0 .. iter {
+                    z = z*z + c;
+                    if z.norm_sqr() > 4.0 { break; }
                 }
-            }
-            }).map_err(|e| e.to_string()).unwrap();
-    bg_texture
+
+                let color = if z.norm_sqr() > 4.0 { 255 } else { 0 };
+                let offset:usize = y * pitch + x * 4;
+                pixel_buffer[offset+0] = color; //Blue
+                pixel_buffer[offset+1] = color; //Green
+                pixel_buffer[offset+2] = color; //Red
+                pixel_buffer[offset+3] = 255; //Alpha 
+            }//for x
+        }//for y 
+    }).unwrap();
+    ()
 }
