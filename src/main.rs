@@ -3,6 +3,9 @@ use std::convert::TryInto;
 use std::time::{Instant};
 use num::Complex;
 
+//extern crate rayon;
+//use rayon::prelude::*;
+
 extern crate sdl2;
 use sdl2::event::Event;
 use sdl2::event::WindowEvent;
@@ -402,9 +405,17 @@ fn update_bg(bg_texture: &mut sdl2::render::Texture, view:&ComplexBBox, iter:u32
     let w:usize = width.try_into().unwrap();
     let h:usize = height.try_into().unwrap();
             
+    //maybe eventually cast u8 vector to u32 vector?
     bg_texture.with_lock(None, |pixel_buffer: &mut [u8], pitch: usize| {
         //TODO: farm this out to multiple threads
-        for y in 0 .. h {
+        let rows: Vec<(usize, &mut [u8])> = pixel_buffer
+            .chunks_mut(w*4) //4-bytes-per-pixel
+            .enumerate()
+            .collect();
+
+        //change to .into_par_iter() for parallelism
+        rows.into_iter().for_each(|(y, buffer)| {
+        // for y in 0 .. h {
             for x in 0 .. w {
                 let c = view.screen_to_complex(x.try_into().unwrap(),y.try_into().unwrap(),
                                                w.try_into().unwrap(),h.try_into().unwrap());
@@ -416,13 +427,14 @@ fn update_bg(bg_texture: &mut sdl2::render::Texture, view:&ComplexBBox, iter:u32
                 }
 
                 let color = if z.norm_sqr() > 4.0 { 255 } else { 0 };
-                let offset:usize = y * pitch + x * 4;
-                pixel_buffer[offset+0] = color; //Blue
-                pixel_buffer[offset+1] = color; //Green
-                pixel_buffer[offset+2] = color; //Red
-                pixel_buffer[offset+3] = 255; //Alpha 
+                //let offset:usize = y * pitch + x * 4;
+                let offset:usize = x * 4;
+                buffer[offset+0] = color; //Blue
+                buffer[offset+1] = color; //Green
+                buffer[offset+2] = color; //Red
+                buffer[offset+3] = 255; //Alpha 
             }//for x
-        }//for y 
+        });//foreach y 
     }).unwrap();
     ()
 }
