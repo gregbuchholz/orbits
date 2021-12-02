@@ -169,6 +169,22 @@ fn main() -> Result<(), String> {
                     bg_rect_dest = Rect::new(0,0,win_size.0,win_size.1);
                     update_bg(&mut bg_texture, &view, iterations);
                     },
+                Event::KeyDown {keycode: Some(Keycode::Right), repeat:_, ..} => {
+                    let mouse_state = pump.mouse_state(); let (mx,my) = (mouse_state.x(),mouse_state.y());     
+                    sdl_context.mouse().warp_mouse_in_window(canvas.window(),mx+1,my);
+                    }, 
+                Event::KeyDown {keycode: Some(Keycode::Left), repeat:_, ..} => {
+                    let mouse_state = pump.mouse_state(); let (mx,my) = (mouse_state.x(),mouse_state.y());     
+                    sdl_context.mouse().warp_mouse_in_window(canvas.window(),mx-1,my);
+                    }, 
+                Event::KeyDown {keycode: Some(Keycode::Up), repeat:_, ..} => {
+                    let mouse_state = pump.mouse_state(); let (mx,my) = (mouse_state.x(),mouse_state.y());     
+                    sdl_context.mouse().warp_mouse_in_window(canvas.window(),mx,my-1);
+                    }, 
+                Event::KeyDown {keycode: Some(Keycode::Down), repeat:_, ..} => {
+                    let mouse_state = pump.mouse_state(); let (mx,my) = (mouse_state.x(),mouse_state.y());     
+                    sdl_context.mouse().warp_mouse_in_window(canvas.window(),mx,my+1);
+                    }, 
                 Event::MouseButtonUp {which, mouse_btn, .. } if which != SDL_TOUCH_MOUSEID => {
                     //recalculate new view bounding box
                     if mouse_btn == MouseButton::Left {
