@@ -11,7 +11,7 @@ license-file = "license.txt"
 num = "0.4.0"
 itertools = "0.10.1"
 #sdl2 = "0.35.0"
-#rayon = "1"
+rayon = "1"
 
 
 [dependencies.sdl2]

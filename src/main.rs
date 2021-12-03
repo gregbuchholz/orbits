@@ -4,7 +4,7 @@ use std::time::{Instant};
 use num::Complex;
 
 //extern crate rayon;
-//use rayon::prelude::*;
+use rayon::prelude::*;
 
 extern crate sdl2;
 use sdl2::event::Event;
@@ -406,7 +406,7 @@ fn update_bg(bg_texture: &mut sdl2::render::Texture, view:&ComplexBBox, iter:u32
     let h:usize = height.try_into().unwrap();
             
     //maybe eventually cast u8 vector to u32 vector?
-    bg_texture.with_lock(None, |pixel_buffer: &mut [u8], pitch: usize| {
+    bg_texture.with_lock(None, |pixel_buffer: &mut [u8], _pitch: usize| {
         //TODO: farm this out to multiple threads
         let rows: Vec<(usize, &mut [u8])> = pixel_buffer
             .chunks_mut(w*4) //4-bytes-per-pixel
@@ -414,7 +414,8 @@ fn update_bg(bg_texture: &mut sdl2::render::Texture, view:&ComplexBBox, iter:u32
             .collect();
 
         //change to .into_par_iter() for parallelism
-        rows.into_iter().for_each(|(y, buffer)| {
+        //what will happen on emscripten targets?
+        rows.into_par_iter().for_each(|(y, buffer)| {
         // for y in 0 .. h {
             for x in 0 .. w {
                 let c = view.screen_to_complex(x.try_into().unwrap(),y.try_into().unwrap(),
