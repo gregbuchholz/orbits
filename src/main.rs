@@ -3,7 +3,7 @@ use std::convert::TryInto;
 use std::time::{Instant};
 use num::Complex;
 
-//extern crate rayon;
+#[cfg(not(target_os = "emscripten"))]
 use rayon::prelude::*;
 
 extern crate sdl2;
@@ -414,9 +414,12 @@ fn update_bg(bg_texture: &mut sdl2::render::Texture, view:&ComplexBBox, iter:u32
             .collect();
 
         //change to .into_par_iter() for parallelism
-        //what will happen on emscripten targets?
-        rows.into_par_iter().for_each(|(y, buffer)| {
-        // for y in 0 .. h {
+        //emscripten target don't yet support multi-threading
+        #[cfg(not(target_os = "emscripten"))]
+        let row_iter = rows.into_par_iter();
+        #[cfg(target_os = "emscripten")]
+        let row_iter = rows.into_iter();
+        row_iter.for_each(|(y, buffer)| {
             for x in 0 .. w {
                 let c = view.screen_to_complex(x.try_into().unwrap(),y.try_into().unwrap(),
                                                w.try_into().unwrap(),h.try_into().unwrap());
