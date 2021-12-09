@@ -188,6 +188,20 @@ fn main() -> Result<(), String> {
                     let mouse_state = pump.mouse_state(); let (mx,my) = (mouse_state.x(),mouse_state.y());     
                     sdl_context.mouse().warp_mouse_in_window(canvas.window(),mx,my+1);
                     }, 
+                Event::KeyDown {keycode: Some(Keycode::Comma), repeat:_, ..} => {
+                    /* decrease the radius */
+                    // need to do line drawing algorithm to increase radius by one-pixel
+                    }, 
+                Event::KeyDown {keycode: Some(Keycode::Period), repeat:_, ..} => {
+                    /* increase the radius */
+                    }, 
+                Event::KeyDown {keycode: Some(Keycode::RightBracket), repeat:_, ..} => {
+                    /* rotate cloclwise */
+                    // need to do circle drawing algorithm to increase along the circle by one pixel
+                    }, 
+                Event::KeyDown {keycode: Some(Keycode::LeftBracket), repeat:_, ..} => {
+                    /* rotate counter-clockwise */
+                    }, 
                 Event::MouseButtonUp {which, mouse_btn, .. } if which != SDL_TOUCH_MOUSEID => {
                     //recalculate new view bounding box
                     if mouse_btn == MouseButton::Left {
