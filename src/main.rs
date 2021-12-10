@@ -137,6 +137,7 @@ fn main() -> Result<(), String> {
     let mut pump = sdl_context.event_pump().unwrap();
     let mut position = Complex { re:0.0, im:0.0 };
     let mut saved_orbits:Vec<Complex<f64>> = Vec::new();
+    let mut full_screen = false;
 
     'mainloop: loop {
 
@@ -163,7 +164,9 @@ fn main() -> Result<(), String> {
                     //"F" -> full screen mode
                     //investigate "full screen" in browser, seems to be less than full resolution
                     //suspicously 20% lower: (1138 x 640) instead of (1366 x 768)
-                    canvas.window_mut().set_fullscreen(sdl2::video::FullscreenType::Desktop)?;
+                    canvas.window_mut().set_fullscreen(
+                        if full_screen {sdl2::video::FullscreenType::Off} else {sdl2::video::FullscreenType::Desktop})?;
+                    full_screen = !full_screen;
                     },
                 Event::KeyDown {keycode: Some(Keycode::Home),..} => { 
                     view = initial_view;
