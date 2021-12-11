@@ -149,7 +149,7 @@ fn main() -> Result<(), String> {
             let win_height:i32 = win_size.1.try_into().unwrap(); 
 
             match event {
-                Event::KeyDown {keycode: Some(Keycode::Escape),..} | 
+                Event::KeyDown {keycode: Some(Keycode::Q),..} | 
                 Event::Quit { .. } => { 
                         break 'mainloop 
                     },
@@ -161,12 +161,17 @@ fn main() -> Result<(), String> {
                     update_bg(&mut bg_texture, &view, iterations);
                     },
                 Event::KeyDown {keycode: Some(Keycode::F),..} => { 
-                    //"F" -> full screen mode
                     //investigate "full screen" in browser, seems to be less than full resolution
                     //suspicously 20% lower: (1138 x 640) instead of (1366 x 768)
                     canvas.window_mut().set_fullscreen(
                         if full_screen {sdl2::video::FullscreenType::Off} else {sdl2::video::FullscreenType::Desktop})?;
                     full_screen = !full_screen;
+                    },
+                Event::KeyDown {keycode: Some(Keycode::Escape),..} => { 
+                    if full_screen {
+                        canvas.window_mut().set_fullscreen(sdl2::video::FullscreenType::Off)?;
+                        full_screen = false;
+                    }
                     },
                 Event::KeyDown {keycode: Some(Keycode::Home),..} => { 
                     view = initial_view;
@@ -217,6 +222,14 @@ fn main() -> Result<(), String> {
                         drag_y = 0;
                     }
                     },
+                //Event::MouseButtonDown{which, mouse_btn:MouseButton::Right, .. } if which != SDL_TOUCH_MOUSEID | 
+                Event::KeyDown {keycode: Some(Keycode::Space), .. } => {
+                    //TODO: Consolidate with MouseButtonDown -> MouseButton::Right below
+                    let mouse_state = pump.mouse_state();
+                    let (mx,my) = (mouse_state.x(),mouse_state.y());     
+                    let c = view.screen_to_complex(mx,my,win_width,win_height);
+                        saved_orbits = calc_orbits(c);
+                    }, 
                 Event::MouseButtonDown{which, mouse_btn, .. } if which != SDL_TOUCH_MOUSEID => {
                     match mouse_btn {
                         MouseButton::Left => {
@@ -227,7 +240,6 @@ fn main() -> Result<(), String> {
                         MouseButton::Right => {
                             let mouse_state = pump.mouse_state();
                             let (mx,my) = (mouse_state.x(),mouse_state.y());     
-                            println!("right button down");
                             let c = view.screen_to_complex(mx,my,win_width,win_height);
                             saved_orbits = calc_orbits(c);
                         },
