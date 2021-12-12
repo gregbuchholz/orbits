@@ -6,7 +6,7 @@ use num::Complex;
 #[cfg(not(target_os = "emscripten"))]
 use rayon::prelude::*;
 
-extern crate sdl2;
+use sdl2;
 use sdl2::event::Event;
 use sdl2::event::WindowEvent;
 use sdl2::keyboard::Keycode;
@@ -18,6 +18,8 @@ use std::path::Path;
 use sdl2::render::TextureQuery;
 extern crate itertools;
 use itertools::Itertools;
+
+mod menu;
 
 const SDL_TOUCH_MOUSEID:u32 = u32::MAX;
 
@@ -133,6 +135,9 @@ fn main() -> Result<(), String> {
     let mut show_coords_q = true;
     let mut touch_zoom_in_progress = false;
     let mut touch_zoom_pos = Point::new(0,0);
+    
+    let menu = menu::Menu::init(&creator, &ttf_context);
+    let mut display_menu_q = false;
 
     let mut pump = sdl_context.event_pump().unwrap();
     let mut position = Complex { re:0.0, im:0.0 };
@@ -210,6 +215,9 @@ fn main() -> Result<(), String> {
                 Event::KeyDown {keycode: Some(Keycode::LeftBracket), repeat:_, ..} => {
                     /* rotate counter-clockwise */
                     }, 
+                Event::KeyDown {keycode: Some(Keycode::M),..} => { 
+                        display_menu_q = !display_menu_q;
+                    }
                 Event::MouseButtonUp {which, mouse_btn, .. } if which != SDL_TOUCH_MOUSEID => {
                     //recalculate new view bounding box
                     if mouse_btn == MouseButton::Left {
@@ -255,7 +263,9 @@ fn main() -> Result<(), String> {
                         bg_rect_dest.set_y(bg_rect_dest.y() + state.y());
                     } else {
                         position = view.screen_to_complex(x, y, win_width, win_height);
-                    {}}},
+                    }
+                    menu.selected(x,y);
+                },
                 Event::FingerDown {x, y, .. } |
                 Event::FingerMotion {x, y, .. } => {
                         let _ignore = (x,y);
@@ -380,6 +390,11 @@ fn main() -> Result<(), String> {
                                 width, height);
             canvas.copy(&coord_disp_texture, None, text_rect)?;
         }
+        
+        if display_menu_q {
+            canvas.copy(&menu.texture,None,menu.offset_rect).unwrap(); 
+        }
+
         canvas.present();
     }; //mainloop
 
