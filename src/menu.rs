@@ -27,21 +27,37 @@ impl <'a> Menu <'a>{
         let hint_font = ttf_context.load_font(font_path, 14).unwrap();
   
         let menu_text_color = Color::RGBA(240, 170, 0, 255);
+        let highlight_text_color = Color::RGBA(240, 170, 0, 255);
+        let highlight_bg_color = Color::RGBA(100, 0, 100, 255);
+
         for (y, message) in menu_items().iter().enumerate() {
             let plain_text:String = message.chars().filter(|x|{*x != '_'}).collect();
-            let underscored:String = message.chars().map(|x|{if x == '_' {'_'} else {' '}}).collect();
+            assert!(message.len() - plain_text.len() < 2);//Allow at most one "keyed"/underscored char per item
+            let mut underscored:String = message.chars().map(|x|{if x == '_' {'_'} else {' '}}).collect();
+            underscored.truncate(plain_text.len());
            
-            let mut first_q = true;
-            for text in vec![plain_text, underscored] { 
-                let m = button_font.render(text.as_str())
-                    .blended(menu_text_color).unwrap();
-                let (width,height) = m.size();
-                let displacement:i32 = y as i32 * (height+6) as i32 + padding; 
-                let m_rect = Rect::new(padding, displacement, width, height);
-                if first_q { buttons.push((text.clone(),m_rect.clone())) };
-                m.blit(None,&mut menu_surface,m_rect).unwrap();
-                first_q = false;
-            }
+            let mut normal_text = button_font.render(plain_text.as_str()).blended(menu_text_color).unwrap();
+            let normal_underscored = button_font.render(underscored.as_str()).blended(menu_text_color).unwrap();
+
+            let mut highlighted_text = button_font.render(plain_text.as_str()).blended(highlight_text_color).unwrap();
+            let highlighted_underscored = button_font.render(underscored.as_str()).blended(highlight_text_color).unwrap();
+
+            let (width,height) = normal_text.size();
+            let displacement:i32 = y as i32 * (height+6) as i32 + padding; 
+            let normal_rect = Rect::new(padding, displacement, width, height);
+            
+            normal_underscored.blit(None, &mut normal_text, Rect::new(0, 0, width, height)).unwrap();
+            highlighted_underscored.blit(None, &mut highlighted_text, Rect::new(0, 0, width, height)).unwrap();
+        
+            let mut highlighted_surface = Surface::new(width, height, PixelFormatEnum::ARGB8888).unwrap();
+            highlighted_surface.fill_rect(None, highlight_bg_color).unwrap();
+            //TODO: stick this in the "buttons", and copy to menu when hovering over 
+            highlighted_text.blit(None, &mut highlighted_surface, Rect::new(0,0,width,height)).unwrap();
+
+            buttons.push((plain_text.clone(),normal_rect.clone()));
+            normal_text.blit(None, &mut menu_surface, normal_rect).unwrap();
+
+            //highlighted_surface.blit(None, &mut menu_surface, normal_rect).unwrap();
         }
         
         let hints_text_color = Color::RGBA(120, 120, 120, 255);
