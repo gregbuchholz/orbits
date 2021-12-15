@@ -138,6 +138,7 @@ fn main() -> Result<(), String> {
     
     let menu = menu::Menu::init(&creator, &ttf_context);
     let mut display_menu_q = false;
+    let mut highlighted = None;
 
     let mut pump = sdl_context.event_pump().unwrap();
     let mut position = Complex { re:0.0, im:0.0 };
@@ -264,7 +265,7 @@ fn main() -> Result<(), String> {
                     } else {
                         position = view.screen_to_complex(x, y, win_width, win_height);
                     }
-                    menu.selected(x,y);
+                    highlighted = menu.selected(x,y);
                 },
                 Event::FingerDown {x, y, .. } |
                 Event::FingerMotion {x, y, .. } => {
@@ -393,6 +394,12 @@ fn main() -> Result<(), String> {
         
         if display_menu_q {
             canvas.copy(&menu.texture,None,menu.offset_rect).unwrap(); 
+            if let Some((name,hi_rect,hi_text)) = highlighted {
+                println!("Hover: {}",name);
+                let hi_dest = hi_rect.clone();
+                //let (w,h) = (hi_rect.width(), hi_rect.height());
+                canvas.copy(&hi_text,None,hi_dest).unwrap();
+            }
         }
 
         canvas.present();

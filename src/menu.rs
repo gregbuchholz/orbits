@@ -8,7 +8,7 @@ use sdl2::ttf::Sdl2TtfContext;
 
 pub struct Menu<'a> {
     pub texture: Texture<'a>,
-    pub buttons: Vec<(String, Rect)>,
+    pub buttons: Vec<(String, Rect, Texture<'a>)>,
     pub offset_rect: Rect
 }
 
@@ -29,6 +29,9 @@ impl <'a> Menu <'a>{
         let menu_text_color = Color::RGBA(240, 170, 0, 255);
         let highlight_text_color = Color::RGBA(240, 170, 0, 255);
         let highlight_bg_color = Color::RGBA(100, 0, 100, 255);
+
+        let menu_offset_x = 10;
+        let menu_offset_y = 10;
 
         for (y, message) in menu_items().iter().enumerate() {
             let plain_text:String = message.chars().filter(|x|{*x != '_'}).collect();
@@ -53,8 +56,10 @@ impl <'a> Menu <'a>{
             highlighted_surface.fill_rect(None, highlight_bg_color).unwrap();
             //TODO: stick this in the "buttons", and copy to menu when hovering over 
             highlighted_text.blit(None, &mut highlighted_surface, Rect::new(0,0,width,height)).unwrap();
+            let highlighted_texture = highlighted_surface.as_texture(tc).unwrap();
+            let highlighted_rect = Rect::new(padding+menu_offset_x, displacement+menu_offset_y, width, height);
 
-            buttons.push((plain_text.clone(),normal_rect.clone()));
+            buttons.push((plain_text.clone(),highlighted_rect,highlighted_texture));
             normal_text.blit(None, &mut menu_surface, normal_rect).unwrap();
 
             //highlighted_surface.blit(None, &mut menu_surface, normal_rect).unwrap();
@@ -70,8 +75,6 @@ impl <'a> Menu <'a>{
             m.blit(None,&mut menu_surface,m_rect).unwrap();
         }
        
-        let menu_offset_x = 10;
-        let menu_offset_y = 10;
         let menu_texture = menu_surface.as_texture(tc).unwrap();
         let menu_query = menu_texture.query();
 
@@ -82,17 +85,20 @@ impl <'a> Menu <'a>{
         }
     } //init
 
-    pub fn selected(&self,mouse_x: i32, mouse_y: i32) -> () {
+    pub fn selected(&self,mouse_x: i32, mouse_y: i32) -> Option<&(String,Rect, Texture)> {
         //correct for menu offset (where it gets draw on screen)
 
-        let mouse_point = Point::new(mouse_x-self.offset_rect.x, mouse_y-self.offset_rect.y);
+        //let mouse_point = Point::new(mouse_x-self.offset_rect.x, mouse_y-self.offset_rect.y);
+        let mouse_point = Point::new(mouse_x, mouse_y);
 
-        for (name,rect) in self.buttons.iter() {
+        for but in self.buttons.iter() {
+            let (_name,rect,_highlighted_texture) = but;
             if rect.contains_point(mouse_point) {
-                println!("Hover over: {}!",name);
+                //println!("Hover over: {}!",name);
+                return Some(but);
             }
         }
-        ()
+        None
     }
 } //impl Menu
 
