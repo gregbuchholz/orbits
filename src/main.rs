@@ -219,17 +219,34 @@ fn main() -> Result<(), String> {
                 Event::KeyDown {keycode: Some(Keycode::M),..} => { 
                         display_menu_q = !display_menu_q;
                     }
-                Event::MouseButtonUp {which, mouse_btn, .. } if which != SDL_TOUCH_MOUSEID => {
+                Event::MouseButtonUp {which, mouse_btn, x, y, window_id, .. } if which != SDL_TOUCH_MOUSEID => {
                     //recalculate new view bounding box
                     if mouse_btn == MouseButton::Left {
-                        let shift = view.complex_deltas(win_width, win_height, drag_x, drag_y);
-                        view = ComplexBBox {ll: view.ll-shift, ur: view.ur-shift};
-                        bg_rect_dest = Rect::new(0, 0, win_size.0, win_size.1);//reset bg_rect
-                        update_bg(&mut bg_texture, &view, iterations);
-                        let _state = pump.relative_mouse_state(); //reset relative coordinates
-                        drag_x = 0;
-                        drag_y = 0;
+                        if display_menu_q {
+                            //Was a menu item selected?
+                            if let Some((action,_,_)) = menu.selected(x,y) {
+                                let simulated_keypress: Event = Event::KeyDown {
+                                    keycode: action.clone(),
+                                    timestamp: 0,
+                                    scancode: None,
+                                    window_id: window_id,
+                                    keymod: sdl2::keyboard::Mod::NOMOD,
+                                    repeat: false
+                                };
+                                sdl_context.event().unwrap().push_event(simulated_keypress)?;
+                            }
+                        } else {
+                            //finishing up dragging/panning
+                            let shift = view.complex_deltas(win_width, win_height, drag_x, drag_y);
+                            view = ComplexBBox {ll: view.ll-shift, ur: view.ur-shift};
+                            bg_rect_dest = Rect::new(0, 0, win_size.0, win_size.1);//reset bg_rect
+                            update_bg(&mut bg_texture, &view, iterations);
+                            let _state = pump.relative_mouse_state(); //reset relative coordinates
+                            drag_x = 0;
+                            drag_y = 0;
+                        }
                     }
+                    display_menu_q = false;
                     },
                 //Event::MouseButtonDown{which, mouse_btn:MouseButton::Right, .. } if which != SDL_TOUCH_MOUSEID | 
                 Event::KeyDown {keycode: Some(Keycode::Space), .. } => {
@@ -257,6 +274,7 @@ fn main() -> Result<(), String> {
                     },
                 Event::MouseMotion {x, y, which, .. } if which != SDL_TOUCH_MOUSEID => {
                     if pump.mouse_state().is_mouse_button_pressed(MouseButton::Left) {
+                        //panning
                         let state = pump.relative_mouse_state();
                         drag_x += state.x();
                         drag_y += state.y();
@@ -351,6 +369,9 @@ fn main() -> Result<(), String> {
                          let after = before.elapsed();
                          println!("Resize time: {:?}",after);
                     },
+                Event::KeyUp {keycode, .. } if keycode != Some(Keycode::M)=> {
+                    display_menu_q = false;
+                }
                 _ => { 
                         println!("unhandeled event: {:?}",event);
                      }
@@ -395,7 +416,7 @@ fn main() -> Result<(), String> {
         if display_menu_q {
             canvas.copy(&menu.texture,None,menu.offset_rect).unwrap(); 
             if let Some((name,hi_rect,hi_text)) = highlighted {
-                println!("Hover: {}",name);
+                //println!("Hover: {}",name);
                 let hi_dest = hi_rect.clone();
                 //let (w,h) = (hi_rect.width(), hi_rect.height());
                 canvas.copy(&hi_text,None,hi_dest).unwrap();

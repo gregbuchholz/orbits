@@ -2,13 +2,15 @@ use sdl2;
 use sdl2::{render::{TextureCreator, Texture}, video::WindowContext};
 use sdl2::pixels::{PixelFormatEnum, Color};
 use sdl2::rect::{Point, Rect};
+use sdl2::keyboard::Keycode;
 use std::path::Path;
 use sdl2::surface::Surface;
 use sdl2::ttf::Sdl2TtfContext;
 
 pub struct Menu<'a> {
     pub texture: Texture<'a>,
-    pub buttons: Vec<(String, Rect, Texture<'a>)>,
+    pub buttons: Vec<(Option<Keycode>, Rect, Texture<'a>)>,
+    //pub buttons: Vec<(String, Rect, Texture<'a>)>,
     pub offset_rect: Rect
 }
 
@@ -33,7 +35,7 @@ impl <'a> Menu <'a>{
         let menu_offset_x = 10;
         let menu_offset_y = 10;
 
-        for (y, message) in menu_items().iter().enumerate() {
+        for (y, (message,key_binding)) in menu_items().iter().enumerate() {
             let plain_text:String = message.chars().filter(|x|{*x != '_'}).collect();
             assert!(message.len() - plain_text.len() < 2);//Allow at most one "keyed"/underscored char per item
             let mut underscored:String = message.chars().map(|x|{if x == '_' {'_'} else {' '}}).collect();
@@ -59,7 +61,7 @@ impl <'a> Menu <'a>{
             let highlighted_texture = highlighted_surface.as_texture(tc).unwrap();
             let highlighted_rect = Rect::new(padding+menu_offset_x, displacement+menu_offset_y, width, height);
 
-            buttons.push((plain_text.clone(),highlighted_rect,highlighted_texture));
+            buttons.push((key_binding.clone(), highlighted_rect,highlighted_texture));
             normal_text.blit(None, &mut menu_surface, normal_rect).unwrap();
 
             //highlighted_surface.blit(None, &mut menu_surface, normal_rect).unwrap();
@@ -85,16 +87,12 @@ impl <'a> Menu <'a>{
         }
     } //init
 
-    pub fn selected(&self,mouse_x: i32, mouse_y: i32) -> Option<&(String,Rect, Texture)> {
-        //correct for menu offset (where it gets draw on screen)
-
-        //let mouse_point = Point::new(mouse_x-self.offset_rect.x, mouse_y-self.offset_rect.y);
+    pub fn selected(&self,mouse_x: i32, mouse_y: i32) -> Option<&(Option<Keycode>, Rect, Texture)> {
         let mouse_point = Point::new(mouse_x, mouse_y);
 
         for but in self.buttons.iter() {
             let (_name,rect,_highlighted_texture) = but;
             if rect.contains_point(mouse_point) {
-                //println!("Hover over: {}!",name);
                 return Some(but);
             }
         }
@@ -102,13 +100,13 @@ impl <'a> Menu <'a>{
     }
 } //impl Menu
 
-fn menu_items() -> Vec<&'static str> {
+fn menu_items() -> Vec<(&'static str, Option<sdl2::keyboard::Keycode>)> {
     vec![
-        "_Fullscreen",
-        "Display _Coordinates",
-        "_Menu",
-        "_Quit",
-        "_About",
+        ("_Fullscreen", Some(Keycode::F)),
+        ("Display _Coordinates",Some(Keycode::C)),
+        ("_Menu",Some(Keycode::M)),
+        ("_Quit",Some(Keycode::Q)),
+        ("_About",Some(Keycode::A)),
     ]
 }
 
