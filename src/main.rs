@@ -169,6 +169,7 @@ fn main() -> Result<(), String> {
                 Event::KeyDown {keycode: Some(Keycode::F),..} => { 
                     //investigate "full screen" in browser, seems to be less than full resolution
                     //suspicously 20% lower: (1138 x 640) instead of (1366 x 768)
+                    println!("full_screen:{}, event:{:?}",full_screen,event);
                     canvas.window_mut().set_fullscreen(
                         if full_screen {sdl2::video::FullscreenType::Off} else {sdl2::video::FullscreenType::Desktop})?;
                     full_screen = !full_screen;
@@ -186,19 +187,24 @@ fn main() -> Result<(), String> {
                     bg_rect_dest = Rect::new(0,0,win_size.0,win_size.1);
                     update_bg(&mut bg_texture, &view, iterations);
                     },
-                Event::KeyDown {keycode: Some(Keycode::Right), repeat:_, ..} => {
+                Event::KeyDown {keycode: Some(Keycode::Right), repeat:_, ..} | 
+                Event::KeyDown {keycode: Some(Keycode::Kp6), repeat:_, ..} => {
                     let mouse_state = pump.mouse_state(); let (mx,my) = (mouse_state.x(),mouse_state.y());     
+                    println!("Right, {:?},{:?}",(mx,my),event);
                     sdl_context.mouse().warp_mouse_in_window(canvas.window(),mx+1,my);
                     }, 
-                Event::KeyDown {keycode: Some(Keycode::Left), repeat:_, ..} => {
+                Event::KeyDown {keycode: Some(Keycode::Left), repeat:_, ..} | 
+                Event::KeyDown {keycode: Some(Keycode::Kp4), repeat:_, ..} => {
                     let mouse_state = pump.mouse_state(); let (mx,my) = (mouse_state.x(),mouse_state.y());     
                     sdl_context.mouse().warp_mouse_in_window(canvas.window(),mx-1,my);
                     }, 
-                Event::KeyDown {keycode: Some(Keycode::Up), repeat:_, ..} => {
+                Event::KeyDown {keycode: Some(Keycode::Up), repeat:_, ..} | 
+                Event::KeyDown {keycode: Some(Keycode::Kp8), repeat:_, ..} => {
                     let mouse_state = pump.mouse_state(); let (mx,my) = (mouse_state.x(),mouse_state.y());     
                     sdl_context.mouse().warp_mouse_in_window(canvas.window(),mx,my-1);
                     }, 
-                Event::KeyDown {keycode: Some(Keycode::Down), repeat:_, ..} => {
+                Event::KeyDown {keycode: Some(Keycode::Down), repeat:_, ..} | 
+                Event::KeyDown {keycode: Some(Keycode::Kp2), repeat:_, ..} => {
                     let mouse_state = pump.mouse_state(); let (mx,my) = (mouse_state.x(),mouse_state.y());     
                     sdl_context.mouse().warp_mouse_in_window(canvas.window(),mx,my+1);
                     }, 
@@ -219,21 +225,42 @@ fn main() -> Result<(), String> {
                 Event::KeyDown {keycode: Some(Keycode::M),..} => { 
                         display_menu_q = !display_menu_q;
                     }
-                Event::MouseButtonUp {which, mouse_btn, x, y, window_id, .. } if which != SDL_TOUCH_MOUSEID => {
+                Event::MouseButtonUp {which, mouse_btn, x, y, window_id, timestamp, .. } if which != SDL_TOUCH_MOUSEID => {
                     //recalculate new view bounding box
                     if mouse_btn == MouseButton::Left {
                         if display_menu_q {
                             //Was a menu item selected?
                             if let Some((action,_,_)) = menu.selected(x,y) {
-                                let simulated_keypress: Event = Event::KeyDown {
-                                    keycode: action.clone(),
-                                    timestamp: 0,
-                                    scancode: None,
-                                    window_id: window_id,
-                                    keymod: sdl2::keyboard::Mod::NOMOD,
-                                    repeat: false
-                                };
-                                sdl_context.event().unwrap().push_event(simulated_keypress)?;
+                                if action.clone() == Some(Keycode::F) {
+                                    //Something is funky with entering fullscreen mode on emscripten
+                                    //it when using keyboard "F" there is no problem, but with using 
+                                    //the menu command, it takes a "refresh" type event to actually get into
+                                    //full screen mode.  Like pressing a key or "exposing".  Right clicking
+                                    //gets into an even weirder mode.
+                                    canvas.window_mut().set_fullscreen(
+                                        if full_screen {sdl2::video::FullscreenType::Off} else {sdl2::video::FullscreenType::Desktop})?;
+                                    full_screen = !full_screen;
+                                } else {
+                                    let simulated_keydown: Event = Event::KeyDown {
+                                        keycode: action.clone(),
+                                        timestamp: timestamp+1,
+                                        scancode: Some(sdl2::keyboard::Scancode::F),
+                                        window_id: window_id,
+                                        keymod: sdl2::keyboard::Mod::NOMOD,
+                                        repeat: false
+                                    };
+                                    let simulated_keyup: Event = Event::KeyUp {
+                                        keycode: action.clone(),
+                                        timestamp: timestamp+20,
+                                        scancode: Some(sdl2::keyboard::Scancode::F),
+                                        window_id: window_id,
+                                        keymod: sdl2::keyboard::Mod::NOMOD,
+                                        repeat: false
+                                    };
+                                    let event = sdl_context.event().unwrap();
+                                    event.push_event(simulated_keydown)?;
+                                    event.push_event(simulated_keyup)?;
+                                }
                             }
                         } else {
                             //finishing up dragging/panning
@@ -355,6 +382,7 @@ fn main() -> Result<(), String> {
                     },
                 Event::Window {win_event: WindowEvent::SizeChanged(x,y), .. } => { 
                         println!("Got Size change -- x:{}, y:{}",x,y);
+                        println!("size change event {:?}",event);
                         let new_size = canvas.viewport().size();
                         let nx = new_size.0;
                         let ny = new_size.1;
@@ -370,6 +398,7 @@ fn main() -> Result<(), String> {
                          println!("Resize time: {:?}",after);
                     },
                 Event::KeyUp {keycode, .. } if keycode != Some(Keycode::M)=> {
+                    println!("keyup: {:?}",event);
                     display_menu_q = false;
                 }
                 _ => { 
@@ -415,7 +444,7 @@ fn main() -> Result<(), String> {
         
         if display_menu_q {
             canvas.copy(&menu.texture,None,menu.offset_rect).unwrap(); 
-            if let Some((name,hi_rect,hi_text)) = highlighted {
+            if let Some((_action,hi_rect,hi_text)) = highlighted {
                 //println!("Hover: {}",name);
                 let hi_dest = hi_rect.clone();
                 //let (w,h) = (hi_rect.width(), hi_rect.height());
