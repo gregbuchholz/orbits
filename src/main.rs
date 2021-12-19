@@ -225,44 +225,10 @@ fn main() -> Result<(), String> {
                 Event::KeyDown {keycode: Some(Keycode::M),..} => { 
                         display_menu_q = !display_menu_q;
                     }
-                Event::MouseButtonUp {which, mouse_btn, x, y, window_id, timestamp, .. } if which != SDL_TOUCH_MOUSEID => {
+                Event::MouseButtonUp {which, mouse_btn, .. } if which != SDL_TOUCH_MOUSEID => {
                     //recalculate new view bounding box
                     if mouse_btn == MouseButton::Left {
-                        if display_menu_q {
-                            //Was a menu item selected?
-                            if let Some((action,_,_)) = menu.selected(x,y) {
-                                if action.clone() == Some(Keycode::F) {
-                                    //Something is funky with entering fullscreen mode on emscripten
-                                    //it when using keyboard "F" there is no problem, but with using 
-                                    //the menu command, it takes a "refresh" type event to actually get into
-                                    //full screen mode.  Like pressing a key or "exposing".  Right clicking
-                                    //gets into an even weirder mode.
-                                    canvas.window_mut().set_fullscreen(
-                                        if full_screen {sdl2::video::FullscreenType::Off} else {sdl2::video::FullscreenType::Desktop})?;
-                                    full_screen = !full_screen;
-                                } else {
-                                    let simulated_keydown: Event = Event::KeyDown {
-                                        keycode: action.clone(),
-                                        timestamp: timestamp+1,
-                                        scancode: Some(sdl2::keyboard::Scancode::F),
-                                        window_id: window_id,
-                                        keymod: sdl2::keyboard::Mod::NOMOD,
-                                        repeat: false
-                                    };
-                                    let simulated_keyup: Event = Event::KeyUp {
-                                        keycode: action.clone(),
-                                        timestamp: timestamp+20,
-                                        scancode: Some(sdl2::keyboard::Scancode::F),
-                                        window_id: window_id,
-                                        keymod: sdl2::keyboard::Mod::NOMOD,
-                                        repeat: false
-                                    };
-                                    let event = sdl_context.event().unwrap();
-                                    event.push_event(simulated_keydown)?;
-                                    event.push_event(simulated_keyup)?;
-                                }
-                            }
-                        } else {
+                        {
                             //finishing up dragging/panning
                             let shift = view.complex_deltas(win_width, win_height, drag_x, drag_y);
                             view = ComplexBBox {ll: view.ll-shift, ur: view.ur-shift};
@@ -283,13 +249,46 @@ fn main() -> Result<(), String> {
                     let c = view.screen_to_complex(mx,my,win_width,win_height);
                         saved_orbits = calc_orbits(c);
                     }, 
-                Event::MouseButtonDown{which, mouse_btn, .. } if which != SDL_TOUCH_MOUSEID => {
+                Event::MouseButtonDown{which, mouse_btn, x, y, window_id, timestamp, clicks, .. } if which != SDL_TOUCH_MOUSEID => {
                     match mouse_btn {
                         MouseButton::Left => {
-                            let _state = pump.relative_mouse_state(); //reset relative coordinates in SDL land
-                            drag_x = 0;
-                            drag_y = 0;
-                        },
+                            if !display_menu_q {
+                                let _state = pump.relative_mouse_state(); //reset relative coordinates in SDL land
+                                drag_x = 0;
+                                drag_y = 0;
+                            } else { //Was a menu item selected?
+                                if let Some((action,_,_)) = menu.selected(x,y) {
+                                    if action.clone() == Some(Keycode::F) {
+                                        canvas.window_mut().set_fullscreen(
+                                            if full_screen {sdl2::video::FullscreenType::Off} else {sdl2::video::FullscreenType::Desktop})?;
+                                        full_screen = !full_screen;
+                                        let simulated_mouse_up: Event = Event::MouseButtonUp{
+                                            which: which,
+                                            mouse_btn: mouse_btn,
+                                            x:x, y:y, clicks: clicks,
+                                            timestamp: timestamp+1,
+                                            window_id: window_id,
+                                        };
+
+                                        let event = sdl_context.event().unwrap();
+                                        event.push_event(simulated_mouse_up)?;
+
+                                    } else {
+                                        let simulated_keydown: Event = Event::KeyDown {
+                                            keycode: action.clone(),
+                                            timestamp: timestamp+1,
+                                            scancode: Some(sdl2::keyboard::Scancode::F),
+                                            window_id: window_id,
+                                            keymod: sdl2::keyboard::Mod::NOMOD,
+                                            repeat: false
+                                        };
+                                        let event = sdl_context.event().unwrap();
+                                        event.push_event(simulated_keydown)?;
+                                    } //if action.clone()
+                                } // if let
+                            } // if !diaplay_menu_q
+                            display_menu_q = false;
+                        }, //MouseButton::Left
                         MouseButton::Right => {
                             let mouse_state = pump.mouse_state();
                             let (mx,my) = (mouse_state.x(),mouse_state.y());     
@@ -302,6 +301,8 @@ fn main() -> Result<(), String> {
                 Event::MouseMotion {x, y, which, .. } if which != SDL_TOUCH_MOUSEID => {
                     if pump.mouse_state().is_mouse_button_pressed(MouseButton::Left) {
                         //panning
+                        //TODO: Problem with emscripten thinking that left mouse button is pressed after return from full screen mode
+                        println!("left pressed...");
                         let state = pump.relative_mouse_state();
                         drag_x += state.x();
                         drag_y += state.y();
