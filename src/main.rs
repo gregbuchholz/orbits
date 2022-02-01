@@ -3,7 +3,7 @@ use std::convert::TryInto;
 use std::time::{Instant};
 use num::Complex;
 
-#[cfg(not(target_os = "emscripten"))]
+//#[cfg(not(target_os = "emscripten"))]
 use rayon::prelude::*;
 
 use sdl2;
@@ -11,6 +11,7 @@ use sdl2::event::Event;
 use sdl2::event::WindowEvent;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
+use sdl2::mouse::MouseState;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Point;
 use sdl2::rect::Rect;
@@ -299,7 +300,9 @@ fn main() -> Result<(), String> {
                     }
                     },
                 Event::MouseMotion {x, y, which, .. } if which != SDL_TOUCH_MOUSEID => {
-                    if pump.mouse_state().is_mouse_button_pressed(MouseButton::Left) {
+                    //if pump.mouse_state().is_mouse_button_pressed(MouseButton::Left) {
+                    //if MouseState::new(pump).left() {
+                    if pump.mouse_state().left() {
                         //panning
                         //TODO: Problem with emscripten thinking that left mouse button is pressed after return from full screen mode
                         println!("left pressed...");
@@ -517,10 +520,10 @@ fn update_bg(bg_texture: &mut sdl2::render::Texture, view:&ComplexBBox, iter:u32
 
         //change to .into_par_iter() for parallelism
         //emscripten target don't yet support multi-threading
-        #[cfg(not(target_os = "emscripten"))]
+        //#[cfg(not(target_os = "emscripten"))]
         let row_iter = rows.into_par_iter();
-        #[cfg(target_os = "emscripten")]
-        let row_iter = rows.into_iter();
+        //#[cfg(target_os = "emscripten")]
+        //let row_iter = rows.into_iter();
         row_iter.for_each(|(y, buffer)| {
             for x in 0 .. w {
                 let c = view.screen_to_complex(x.try_into().unwrap(),y.try_into().unwrap(),

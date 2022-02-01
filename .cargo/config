@@ -7,6 +7,7 @@ rustflags = [
 
 [target.wasm32-unknown-emscripten]
 rustflags = [
-    "-C", "link-args=src/gxx_personality_v0_stub.o -sUSE_SDL=2 -sUSE_SDL_TTF=2 -s ASYNCIFY -s ALLOW_MEMORY_GROWTH=1, --embed-file assets",
-    #"-C", "link-args=src/gxx_personality_v0_stub.o -pthread -s PROXY_TO_PTHREAD -sUSE_SDL=2 -sUSE_SDL_TTF=2 -s ASYNCIFY -s ALLOW_MEMORY_GROWTH=1, --embed-file assets -Wl,--shared-memory",
+    "-C", "target-feature=+atomics,+bulk-memory",
+    "-C", "link-args=src/gxx_personality_v0_stub.o -pthread -sUSE_SDL=2 -sUSE_SDL_TTF=2 -s PROXY_TO_PTHREAD -s ASYNCIFY -s ALLOW_MEMORY_GROWTH=1 -s USE_PTHREADS=1 -s PTHREAD_POOL_SIZE=8 -s OFFSCREEN_FRAMEBUFFER=1, --embed-file assets",
+    #"-C", "link-args=src/gxx_personality_v0_stub.o -pthread -sUSE_SDL=2 -sUSE_SDL_TTF=2 -s PROXY_TO_PTHREAD -s ASYNCIFY -s ALLOW_MEMORY_GROWTH=1, --embed-file assets",
 ]
